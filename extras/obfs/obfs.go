@@ -15,9 +15,10 @@ type Obfuscator interface {
 // ObfuscatorConfig defines the common configuration structure for all obfuscators.
 // This allows for unified configuration parsing.
 type ObfuscatorConfig struct {
-	Type     string `mapstructure:"type"`     // Type of the obfuscator (e.g., "salamander", "scramble", "chameleon")
+	Type     string `mapstructure:"type"`     // Type of the obfuscator (e.g., "salamander", "scramble", "chameleon", "stealthflow", "quantumshuffle")
 	Password string `mapstructure:"password"` // Pre-shared key/password used by the obfuscator
 	// Add other common or specific configuration fields here if needed for future obfuscators.
+	// For example, a "FakeHost" for StealthFlow, or a "Seed" for QuantumShuffle if it were stateful.
 }
 
 // NewObfuscatorFromConfig is a factory function that creates and returns an Obfuscator
@@ -33,6 +34,13 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return NewScrambleObfuscator([]byte(cfg.Password))
 	case "chameleon":
 		return NewChameleonObfuscator([]byte(cfg.Password))
+	case "stealthflow":
+		// For StealthFlow, we'll use the password as the base for key derivation.
+		// More complex configurations (e.g., specific fake hosts) could be added to ObfuscatorConfig.
+		return NewStealthFlowObfuscator([]byte(cfg.Password))
+	case "quantumshuffle":
+		// For QuantumShuffle, the password is also used for key derivation and randomness seeding.
+		return NewQuantumShuffleObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
