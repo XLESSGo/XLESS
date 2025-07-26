@@ -5,6 +5,8 @@ go 1.23
 toolchain go1.24.2
 
 require (
+	github.com/XLESSGo/XLESS/core v0.0.0
+	github.com/XLESSGo/XLESS/extras v0.0.0
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/caddyserver/certmagic v0.17.2
 	github.com/libdns/cloudflare v0.1.1
