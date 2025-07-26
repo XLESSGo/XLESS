@@ -1,13 +1,12 @@
 package obfs
 
 import (
+	"bytes" // Added for bytes.Equal
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"golang.org/x/crypto/blake2b"
-	"math"
 	mrand "math/rand" // Use math/rand for non-cryptographic randomness (padding lengths, offsets)
 	"sync"
 	"time"
@@ -62,6 +61,19 @@ func (o *QuantumShuffleObfuscator) qsDeriveControlKey() byte {
 	return hash[0] // Use the first byte of the hash as a simple XOR key
 }
 
+// qsRandBytes generates a slice of cryptographically secure random bytes of the given length.
+func qsRandBytes(length int) ([]byte, error) {
+	if length < 0 {
+		return nil, fmt.Errorf("length cannot be negative")
+	}
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	return b, nil
+}
+
 // Obfuscate encrypts the input 'in' and shuffles its internal structure.
 // It generates random padding and a magic number, and encodes their positions
 // in an obfuscated control header.
@@ -80,11 +92,11 @@ func (o *QuantumShuffleObfuscator) Obfuscate(in, out []byte) int {
 	aesKey := o.qsDeriveAESKey()
 	block, err := aes.NewCipher(aesKey[:qsKeyLen])
 	if err != nil {
-		return 0
+		return 0 // Should not happen with a valid key length
 	}
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return 0
+		return 0 // Should not happen
 	}
 
 	// 3. Encrypt the original payload
@@ -107,7 +119,6 @@ func (o *QuantumShuffleObfuscator) Obfuscate(in, out []byte) int {
 		// To keep it simple, if padding1Len < qsMagicNumberLen, magicOffset will be 0, and it will overlap.
 		// A more robust solution would be to ensure padding1Len >= qsMagicNumberLen.
 	}
-
 
 	// 5. Construct the control header
 	// controlHeader will encode padding1Len, magicOffset, padding2Len
@@ -215,7 +226,6 @@ func (o *QuantumShuffleObfuscator) Deobfuscate(in, out []byte) int {
 		// A more robust check might involve always verifying the magic number regardless of offset.
 	}
 
-
 	// 2. Verify magic number (if it was placed)
 	// This makes the deobfuscation more robust against random data.
 	if magicOffset+qsMagicNumberLen <= padding1Len {
@@ -225,7 +235,6 @@ func (o *QuantumShuffleObfuscator) Deobfuscate(in, out []byte) int {
 			return 0 // Magic number mismatch or packet too short
 		}
 	}
-
 
 	// 3. Calculate the start of the nonce and encrypted payload
 	nonceStart := qsControlHeaderLen + padding1Len
