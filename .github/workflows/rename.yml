@@ -1,0 +1,40 @@
+name: Rename Go Module and Commit Go Module Changes
+
+# This workflow can be triggered manually from the "Actions" tab in GitHub.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # This token is required to push changes back to the repository
+          token: ${{ secrets.GITHUB_TOKEN }} 
+      
+      # Step 2: Batch replace module paths in all .go files
+      - name: Find and replace module paths in .go files
+        # Use find with xargs and sed for efficient batch replacement
+        run: |
+          find . -type f -name "*.go" -print0 | xargs -0 sed -i 's|github.com/xlessGo/xless|github.com/XLESSGo/XLESS|g'
+          
+      # Step 4: Configure Git user for commit
+      - name: Configure Git User
+        run: |
+          git config user.name "DarienRaymond"
+          git config user.email "admin@v2ray.com"
+
+      # Step 5: Commit the changes
+      - name: Commit changes
+        run: |
+          git add .
+          git commit -m "Rename Go Module: v4ray to v2ray"
+
+      # Step 6: Push the changes back to the repository
+      - name: Push changes
+        run: |
+          git push

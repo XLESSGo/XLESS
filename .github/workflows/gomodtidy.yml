@@ -1,0 +1,104 @@
+name: "Go Mod Tidy and Auto Push"
+
+on:
+  # 允许手动从 GitHub Actions UI 触发此工作流
+  workflow_dispatch:
+
+jobs:
+  # 为 'app' 模块运行 go mod tidy 并推送更改
+  tidy_app_module:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v4
+        with:
+          # 需要 token 以便能够推送更改
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go # 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # 根据需要调整 Go 版本
+
+      - name: Run go mod tidy for app # 为 'app' 模块运行 go mod tidy
+        working-directory: ./app # 在 'app' 目录下执行命令
+        run: go mod tidy
+
+      - name: Commit and push changes for app # 提交并推送 'app' 模块的更改
+        working-directory: ./app # 在 'app' 目录下执行命令
+        run: |
+          # 检查是否有更改
+          if git diff --exit-code go.mod go.sum; then
+            echo "No changes in app/go.mod or app/go.sum. Skipping commit."
+          else
+            echo "Changes detected in app/go.mod or app/go.sum. Committing and pushing."
+            git config user.name "github-actions[bot]" # 配置 Git 用户名
+            git config user.email "github-actions[bot]@users.noreply.github.com" # 配置 Git 用户邮箱
+            git add go.mod go.sum # 添加更改的文件
+            git commit -m "Auto: go mod tidy for app module" # 提交更改
+            git push # 推送更改
+          fi
+
+  # 为 'core' 模块运行 go mod tidy 并推送更改
+  tidy_core_module:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go # 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run go mod tidy for core # 为 'core' 模块运行 go mod tidy
+        working-directory: ./core # 在 'core' 目录下执行命令
+        run: go mod tidy
+
+      - name: Commit and push changes for core # 提交并推送 'core' 模块的更改
+        working-directory: ./core # 在 'core' 目录下执行命令
+        run: |
+          if git diff --exit-code go.mod go.sum; then
+            echo "No changes in core/go.mod or core/go.sum. Skipping commit."
+          else
+            echo "Changes detected in core/go.mod or core/go.sum. Committing and pushing."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add go.mod go.sum
+            git commit -m "Auto: go mod tidy for core module"
+            git push
+          fi
+
+  # 为 'extras' 模块运行 go mod tidy 并推送更改
+  tidy_extras_module:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go # 设置 Go 环境
+        uses: actions/setup-go@v5 # 修正了这里的冒号为斜杠
+        with:
+          go-version: '1.22'
+
+      - name: Run go mod tidy for extras # 为 'extras' 模块运行 go mod tidy
+        working-directory: ./extras # 在 'extras' 目录下执行命令
+        run: go mod tidy
+
+      - name: Commit and push changes for extras # 提交并推送 'extras' 模块的更改
+        working-directory: ./extras # 在 'extras' 目录下执行命令
+        run: |
+          if git diff --exit-code go.mod go.sum; then
+            echo "No changes in extras/go.mod or extras/go.sum. Skipping commit."
+          else
+            echo "Changes detected in extras/go.mod or extras/go.sum. Committing and pushing."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add go.mod go.sum
+            git commit -m "Auto: go mod tidy for extras module"
+            git push
+          fi

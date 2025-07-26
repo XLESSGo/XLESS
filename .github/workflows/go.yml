@@ -1,0 +1,80 @@
+name: "Go Selective Build"
+
+on:
+  push:
+    branches: ["*"]
+    # 移除 paths 过滤，确保任何 push 都会触发工作流
+    # paths:
+    #   - 'app/**'
+    #   - 'core/**'
+    #   - 'extras/**'
+  pull_request:
+    branches: ["*"]
+    # 对于拉取请求，工作流将始终触发，然后由后续的 job 条件判断是否执行特定模块的构建
+
+jobs:
+  # 构建和测试 'app' 模块的 Job
+  build_app:
+    # 修改 if 条件：对于 push 事件，只要工作流被触发就运行此 Job
+    if: |
+      github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v3
+      - name: Setup Go # 设置 Go 环境
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.24.x # 使用 Go 1.24.x 版本
+      - name: Show Go version # 显示 Go 版本
+        run: go version
+      - name: Build app module # 构建 'app' 模块
+        working-directory: ./app # 在 'app' 目录下执行命令
+        run: go build -v ./...
+      - name: Test app module # 测试 'app' 模块
+        working-directory: ./app # 在 'app' 目录下执行命令
+        run: go test -v ./...
+
+  # 构建和测试 'core' 模块的 Job
+  build_core:
+    # 修改 if 条件：对于 push 事件，只要工作流被触发就运行此 Job
+    if: |
+      github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v3
+      - name: Setup Go # 设置 Go 环境
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.24.x
+      - name: Show Go version # 显示 Go 版本
+        run: go version
+      - name: Build core module # 构建 'core' 模块
+        working-directory: ./core # 在 'core' 目录下执行命令
+        run: go build -v ./...
+      - name: Test core module # 测试 'core' 模块
+        working-directory: ./core # 在 'core' 目录下执行命令
+        run: go test -v ./...
+
+  # 构建和测试 'extras' 模块的 Job
+  build_extras:
+    # 修改 if 条件：对于 push 事件，只要工作流被触发就运行此 Job
+    if: |
+      github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code # 检出代码
+        uses: actions/checkout@v3
+      - name: Setup Go # 设置 Go 环境
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.24.x
+      - name: Show Go version # 显示 Go 版本
+        run: go version
+      - name: Build extras module # 构建 'extras' 模块
+        working-directory: ./extras # 在 'extras' 目录下执行命令
+        run: go build -v ./...
+      - name: Test extras module # 测试 'extras' 模块
+        working-directory: ./extras # 在 'extras' 目录下执行命令
+        run: go test -v ./...
