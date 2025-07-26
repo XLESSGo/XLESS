@@ -36,11 +36,12 @@ jobs:
             echo "No changes in app/go.mod or app/go.sum. Skipping commit."
           else
             echo "Changes detected in app/go.mod or app/go.sum. Committing and pushing."
-            git config user.name "github-actions[bot]" # 配置 Git 用户名
-            git config user.email "github-actions[bot]@users.noreply.github.com" # 配置 Git 用户邮箱
-            git add go.mod go.sum # 添加更改的文件
-            git commit -m "Auto: go mod tidy for app module" # 提交更改
-            git push # 推送更改
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add go.mod go.sum
+            git commit -m "Auto: go mod tidy for app module"
+            git push
+          fi
 
   # 为 'core' 模块运行 go mod tidy 并推送更改
   tidy_core_module:
@@ -72,6 +73,7 @@ jobs:
             git add go.mod go.sum
             git commit -m "Auto: go mod tidy for core module"
             git push
+          fi
 
   # 为 'extras' 模块运行 go mod tidy 并推送更改
   tidy_extras_module:
@@ -103,6 +105,7 @@ jobs:
             git add go.mod go.sum
             git commit -m "Auto: go mod tidy for extras module"
             git push
+          fi
 
   # 新增 Job: 构建整个 Go 工作区
   build_go_workspace:
@@ -141,8 +144,8 @@ jobs:
             echo "Changes detected in workspace go.work/go.mod/go.sum files. Committing and pushing."
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add go.work # 添加 go.work 文件的更改
-            git add $(find . -name "go.mod" -o -name "go.sum") # 添加所有 go.mod 和 go.sum 文件的更改
+            git add go.work
+            git add $(find . -name "go.mod" -o -name "go.sum")
             git commit -m "Auto: go work sync and tidy for workspace"
             git push
           fi
