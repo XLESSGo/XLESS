@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	mrand "math/rand"
+	"strconv"
 	"strings"
 	"time" // Used for NTP timestamp generation
 )
@@ -86,24 +87,27 @@ const (
 // It embeds segmentStateToken, nonce, and encryptedSegmentPayload.
 func ObfuscateModeTLSAppData(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
 	// Total data to embed: SegmentStateToken + Nonce + Encrypted Segment Payload
-	embeddedData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
-	embeddedData = append(embeddedData, segmentStateToken...)
-	embeddedData = append(embeddedData, nonce...)
-	embeddedData = append(embeddedData, encryptedSegmentPayload...)
+	// The encryptedSegmentPayload's length is already in segmentStateToken.
+	embeddedCoreData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
+	embeddedCoreData = append(embeddedCoreData, segmentStateToken...)
+	embeddedCoreData = append(embeddedCoreData, nonce...)
+	embeddedCoreData = append(embeddedCoreData, encryptedSegmentPayload...)
 
-	// Add random padding to embeddedData to make record length variable
+	// Add random padding to embeddedCoreData to make record length variable
 	paddingLen := randSrc.Intn(MaxDynamicPadding-MinDynamicPadding+1) + MinDynamicPadding
 	randomPadding, err := GenerateRandomBytes(paddingLen)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate random padding: %w", err)
 	}
-	embeddedData = append(embeddedData, randomPadding...)
+	
+	// Final embedded data includes core data and padding
+	finalEmbeddedData := append(embeddedCoreData, randomPadding...)
 
 	// TLS Record Layer Header
 	// Type (1 byte): Application Data (0x17)
 	// Version (2 bytes): TLS 1.2 (0x0303)
-	// Length (2 bytes): Length of the embeddedData
-	recordLen := len(embeddedData)
+	// Length (2 bytes): Length of the finalEmbeddedData
+	recordLen := len(finalEmbeddedData)
 	if recordLen > math.MaxUint16 { // TLS record length is uint16
 		return nil, fmt.Errorf("TLS application data record too large: %d bytes", recordLen)
 	}
@@ -112,7 +116,7 @@ func ObfuscateModeTLSAppData(randSrc *mrand.Rand, segmentStateToken, nonce, encr
 	packet[0] = tlsAppDataRecordType
 	binary.BigEndian.PutUint16(packet[1:3], tlsVersionTLS12)
 	binary.BigEndian.PutUint16(packet[3:5], uint16(recordLen))
-	copy(packet[tlsRecordHeaderLen:], embeddedData)
+	copy(packet[tlsRecordHeaderLen:], finalEmbeddedData)
 
 	return packet, nil
 }
@@ -128,37 +132,45 @@ func DeobfuscateModeTLSAppData(in []byte) ([]byte, []byte, []byte, error) {
 	if in[0] != tlsAppDataRecordType {
 		return nil, nil, nil, fmt.Errorf("incorrect TLS record type: 0x%X, expected 0x%X", in[0], tlsAppDataRecordType)
 	}
-	// Can add version check: if binary.BigEndian.Uint16(in[1:3]) != tlsVersionTLS12 { ... }
+	// Version check (optional but good for strictness)
+	if binary.BigEndian.Uint16(in[1:3]) != tlsVersionTLS12 {
+		return nil, nil, nil, fmt.Errorf("TLS version mismatch: 0x%X, expected 0x%X", binary.BigEndian.Uint16(in[1:3]), tlsVersionTLS12)
+	}
 	recordLen := int(binary.BigEndian.Uint16(in[3:5]))
 	if len(in) != tlsRecordHeaderLen+recordLen {
 		return nil, nil, nil, fmt.Errorf("TLS record length mismatch: header says %d, actual %d", recordLen, len(in)-tlsRecordHeaderLen)
 	}
 
-	embeddedData := in[tlsRecordHeaderLen:]
+	finalEmbeddedData := in[tlsRecordHeaderLen:]
 
-	// Extract SegmentStateToken, Nonce, Encrypted Payload
-	if len(embeddedData) < tlsMinAppDataLen {
-		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token, nonce, and tag")
+	// Extract SegmentStateToken
+	if len(finalEmbeddedData) < SegmentStateTokenLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token")
 	}
-
-	segmentStateToken := embeddedData[0:SegmentStateTokenLen]
+	segmentStateToken := finalEmbeddedData[0:SegmentStateTokenLen]
 	currentEmbeddedOffset := SegmentStateTokenLen
 
-	nonce := embeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
-	currentEmbeddedOffset += NonceLen
-
-	encryptedSegmentPayload := embeddedData[currentEmbeddedOffset : len(embeddedData)-len(embeddedData[currentEmbeddedOffset:])%TagLen] // Strip potential padding after tag
-	// The above line is a simplification. In a real scenario, you'd need a clear way to know where the actual encrypted payload ends and padding begins.
-	// For this example, we assume padding comes after the tag and is not part of the HMAC-protected payload.
-	// A more robust design would embed the actual encrypted payload length.
-	
-	// For now, let's assume the encrypted payload is everything from currentEmbeddedOffset until the end,
-	// and the padding is just "extra" bytes at the end of the physical packet that are ignored.
-	encryptedSegmentPayload = embeddedData[currentEmbeddedOffset:]
-	if len(encryptedSegmentPayload) < TagLen {
-		return nil, nil, nil, fmt.Errorf("encrypted segment payload too short for tag")
+	// Extract metadata from token to get encryptedPayloadLen
+	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
 	}
 
+	// Extract Nonce
+	if len(finalEmbeddedData)-currentEmbeddedOffset < NonceLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for nonce")
+	}
+	nonce := finalEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
+	currentEmbeddedOffset += NonceLen
+
+	// Extract Encrypted Payload based on embedded length
+	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
+	if len(finalEmbeddedData) < expectedEncryptedEnd {
+		return nil, nil, nil, fmt.Errorf("embedded data truncated, encrypted payload shorter than specified in token")
+	}
+	encryptedSegmentPayload := finalEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
+	
+	// Any data after encryptedSegmentPayload is considered padding and ignored.
 
 	return segmentStateToken, nonce, encryptedSegmentPayload, nil
 }
@@ -171,7 +183,7 @@ const (
 	dnsQuestionMinLen = 5 // QNAME (min 1 byte for root) + QTYPE (2) + QCLASS (2)
 	dnsARecordType    = 0x0001 // A record
 	dnsINClass        = 0x0001 // IN class
-	dnsMinPacketLen   = dnsHeaderLen + dnsQuestionMinLen + SegmentStateTokenLen + NonceLen + TagLen // Rough minimum
+	dnsMaxLabelLen    = 63 // Max length of a DNS label
 )
 
 // ObfuscateModeDNSQuery crafts a packet that mimics a DNS A record query.
@@ -183,6 +195,15 @@ func ObfuscateModeDNSQuery(randSrc *mrand.Rand, segmentStateToken, nonce, encryp
 	embeddedData = append(embeddedData, nonce...)
 	embeddedData = append(embeddedData, encryptedSegmentPayload...)
 
+	// Add random padding to embeddedData to make the QNAME length variable
+	paddingLen := randSrc.Intn(MaxDynamicPadding-MinDynamicPadding+1) + MinDynamicPadding
+	randomPadding, err := GenerateRandomBytes(paddingLen)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random padding: %w", err)
+	}
+	embeddedData = append(embeddedData, randomPadding...)
+
+
 	// Generate a plausible DNS ID
 	dnsID := uint16(randSrc.Uint32() % 65535)
 
@@ -192,31 +213,16 @@ func ObfuscateModeDNSQuery(randSrc *mrand.Rand, segmentStateToken, nonce, encryp
 	// QDCOUNT: 1 question
 	qdCount := uint16(1)
 
-	// QNAME: Embed data into a dynamically generated domain name
-	// Example: <random_label>.<embedded_data_as_hex_label_or_random_bytes>.<random_tld>.com
-	// For simplicity, we'll embed directly into a long label.
+	// QNAME: Embed data into multiple dynamically generated DNS labels
 	qNameBuf := new(bytes.Buffer)
 	
-	// First random label
-	firstLabelLen := randSrc.Intn(10) + 5 // 5-14 chars
-	firstLabel := make([]byte, firstLabelLen)
-	for i := 0; i < firstLabelLen; i++ {
-		firstLabel[i] = byte(randSrc.Intn(26) + 'a')
-	}
-	qNameBuf.WriteByte(byte(len(firstLabel)))
-	qNameBuf.Write(firstLabel)
-
-	// Embedded data as a label (or split into multiple labels)
-	// For simplicity, embed all as one large label, potentially truncated.
-	maxEmbeddedLabelLen := 63 // Max DNS label length
-	if len(embeddedData) > maxEmbeddedLabelLen {
-		qNameBuf.WriteByte(byte(maxEmbeddedLabelLen))
-		qNameBuf.Write(embeddedData[:maxEmbeddedLabelLen])
-		embeddedData = embeddedData[maxEmbeddedLabelLen:] // Remaining data
-	} else if len(embeddedData) > 0 {
-		qNameBuf.WriteByte(byte(len(embeddedData)))
-		qNameBuf.Write(embeddedData)
-		embeddedData = []byte{}
+	currentEmbeddedDataOffset := 0
+	// Split embeddedData into 63-byte labels
+	for currentEmbeddedDataOffset < len(embeddedData) {
+		labelLen := min(len(embeddedData)-currentEmbeddedDataOffset, dnsMaxLabelLen)
+		qNameBuf.WriteByte(byte(labelLen))
+		qNameBuf.Write(embeddedData[currentEmbeddedDataOffset : currentEmbeddedDataOffset+labelLen])
+		currentEmbeddedDataOffset += labelLen
 	}
 
 	// Add a common TLD to make it look legitimate
@@ -296,20 +302,38 @@ func DeobfuscateModeDNSQuery(in []byte) ([]byte, []byte, []byte, error) {
 	exampleComSuffix := []byte{7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'c', 'o', 'm'}
 	if bytes.HasSuffix(extractedEmbeddedData, exampleComSuffix) {
 		extractedEmbeddedData = extractedEmbeddedData[:len(extractedEmbeddedData)-len(exampleComSuffix)]
+	} else {
+		return nil, nil, nil, fmt.Errorf("DNS QNAME missing expected suffix")
 	}
 
-	// Extract SegmentStateToken, Nonce, Encrypted Payload from extractedEmbeddedData
-	if len(extractedEmbeddedData) < SegmentStateTokenLen+NonceLen+TagLen {
-		return nil, nil, nil, fmt.Errorf("extracted embedded data too short for segment state token, nonce, and tag")
+	// Extract SegmentStateToken
+	if len(extractedEmbeddedData) < SegmentStateTokenLen {
+		return nil, nil, nil, fmt.Errorf("extracted embedded data too short for segment state token")
 	}
-
 	segmentStateToken := extractedEmbeddedData[0:SegmentStateTokenLen]
 	currentEmbeddedOffset := SegmentStateTokenLen
 
+	// Extract metadata from token to get encryptedPayloadLen
+	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
+	}
+
+	// Extract Nonce
+	if len(extractedEmbeddedData)-currentEmbeddedOffset < NonceLen {
+		return nil, nil, nil, fmt.Errorf("extracted embedded data too short for nonce")
+	}
 	nonce := extractedEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
 	currentEmbeddedOffset += NonceLen
 
-	encryptedSegmentPayload := extractedEmbeddedData[currentEmbeddedOffset:]
+	// Extract Encrypted Payload based on embedded length
+	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
+	if len(extractedEmbeddedData) < expectedEncryptedEnd {
+		return nil, nil, nil, fmt.Errorf("extracted embedded data truncated, encrypted payload shorter than specified in token")
+	}
+	encryptedSegmentPayload := extractedEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
+	
+	// Any data after encryptedSegmentPayload is considered padding and ignored.
 	if len(encryptedSegmentPayload) < TagLen {
 		return nil, nil, nil, fmt.Errorf("encrypted segment payload too short for tag")
 	}
@@ -322,43 +346,41 @@ func DeobfuscateModeDNSQuery(in []byte) ([]byte, []byte, []byte, error) {
 
 const (
 	httpFragmentMinLen = 100 // Minimum length for a believable HTTP fragment
-	httpHeaderEndLen   = 4   // "\r\n\r\n"
-	httpChunkSizeLen   = 2   // Max 2 bytes for chunk size (hex)
+	httpCRLF           = "\r\n"
+	httpDoubleCRLF     = "\r\n\r\n"
 )
 
-// ObfuscateModeHTTPFragment crafts a packet that mimics an HTTP body fragment.
+// ObfuscateModeHTTPFragment crafts a packet that mimics an HTTP body fragment using chunked encoding.
 // It embeds segmentStateToken, nonce, and encryptedSegmentPayload.
 func ObfuscateModeHTTPFragment(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
 	// Total data to embed: SegmentStateToken + Nonce + Encrypted Segment Payload
-	embeddedData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
-	embeddedData = append(embeddedData, segmentStateToken...)
-	embeddedData = append(embeddedData, nonce...)
-	embeddedData = append(embeddedData, encryptedSegmentPayload...)
+	embeddedCoreData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
+	embeddedCoreData = append(embeddedCoreData, segmentStateToken...)
+	embeddedCoreData = append(embeddedCoreData, nonce...)
+	embeddedCoreData = append(embeddedCoreData, encryptedSegmentPayload...)
 
-	// Add random padding to make the fragment size variable
+	// Add random padding to embeddedCoreData to make the chunk size variable
 	paddingLen := randSrc.Intn(MaxDynamicPadding-MinDynamicPadding+1) + MinDynamicPadding
 	randomPadding, err := GenerateRandomBytes(paddingLen)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate random padding: %w", err)
 	}
-	embeddedData = append(embeddedData, randomPadding...)
+	
+	// Final embedded data includes core data and padding
+	finalEmbeddedData := append(embeddedCoreData, randomPadding...)
 
 	// HTTP chunked encoding format:
 	// <chunk-size> CRLF
 	// <chunk-data> CRLF
-	// 0 CRLF
-	// CRLF
+	// (Optional: trailing headers if this is the last chunk, or 0 CRLF CRLF)
 
-	chunkSize := len(embeddedData)
-	chunkSizeHex := []byte(fmt.Sprintf("%x\r\n", chunkSize))
-	
+	chunkSize := len(finalEmbeddedData)
+	chunkSizeHex := []byte(fmt.Sprintf("%x%s", chunkSize, httpCRLF)) // e.g., "7b\r\n"
+
 	packet := new(bytes.Buffer)
 	packet.Write(chunkSizeHex)
-	packet.Write(embeddedData)
-	packet.WriteString("\r\n") // CRLF after chunk data
-
-	// Optionally add random HTTP headers before the chunk, or after for a full response mimic
-	// For a fragment, this is simpler.
+	packet.Write(finalEmbeddedData)
+	packet.WriteString(httpCRLF) // CRLF after chunk data
 
 	return packet.Bytes(), nil
 }
@@ -366,7 +388,7 @@ func ObfuscateModeHTTPFragment(randSrc *mrand.Rand, segmentStateToken, nonce, en
 // DeobfuscateModeHTTPFragment parses a packet mimicking an HTTP body fragment.
 func DeobfuscateModeHTTPFragment(in []byte) ([]byte, []byte, []byte, error) {
 	// Find the first CRLF to get chunk size
-	crlfIdx := bytes.Index(in, []byte("\r\n"))
+	crlfIdx := bytes.Index(in, []byte(httpCRLF))
 	if crlfIdx == -1 {
 		return nil, nil, nil, fmt.Errorf("HTTP fragment: no CRLF after chunk size")
 	}
@@ -377,32 +399,48 @@ func DeobfuscateModeHTTPFragment(in []byte) ([]byte, []byte, []byte, error) {
 		return nil, nil, nil, fmt.Errorf("HTTP fragment: invalid chunk size hex: %w", err)
 	}
 
-	chunkDataStart := crlfIdx + 2 // After CRLF
+	chunkDataStart := crlfIdx + len(httpCRLF) // After CRLF
 	expectedChunkDataEnd := chunkDataStart + int(chunkSize)
 	
 	if len(in) < expectedChunkDataEnd {
 		return nil, nil, nil, fmt.Errorf("HTTP fragment: data truncated, expected %d bytes, got %d", int(chunkSize), len(in)-chunkDataStart)
 	}
 
-	embeddedData := in[chunkDataStart:expectedChunkDataEnd]
+	finalEmbeddedData := in[chunkDataStart:expectedChunkDataEnd]
 
 	// Verify trailing CRLF
-	if len(in) < expectedChunkDataEnd+2 || !bytes.Equal(in[expectedChunkDataEnd:expectedChunkDataEnd+2], []byte("\r\n")) {
+	if len(in) < expectedChunkDataEnd+len(httpCRLF) || !bytes.Equal(in[expectedChunkDataEnd:expectedChunkDataEnd+len(httpCRLF)], []byte(httpCRLF)) {
 		return nil, nil, nil, fmt.Errorf("HTTP fragment: missing CRLF after chunk data")
 	}
 
-	// Extract SegmentStateToken, Nonce, Encrypted Payload
-	if len(embeddedData) < SegmentStateTokenLen+NonceLen+TagLen {
-		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token, nonce, and tag")
+	// Extract SegmentStateToken
+	if len(finalEmbeddedData) < SegmentStateTokenLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token")
 	}
-
-	segmentStateToken := embeddedData[0:SegmentStateTokenLen]
+	segmentStateToken := finalEmbeddedData[0:SegmentStateTokenLen]
 	currentEmbeddedOffset := SegmentStateTokenLen
 
-	nonce := embeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
+	// Extract metadata from token to get encryptedPayloadLen
+	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
+	}
+
+	// Extract Nonce
+	if len(finalEmbeddedData)-currentEmbeddedOffset < NonceLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for nonce")
+	}
+	nonce := finalEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
 	currentEmbeddedOffset += NonceLen
 
-	encryptedSegmentPayload := embeddedData[currentEmbeddedOffset:]
+	// Extract Encrypted Payload based on embedded length
+	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
+	if len(finalEmbeddedData) < expectedEncryptedEnd {
+		return nil, nil, nil, fmt.Errorf("embedded data truncated, encrypted payload shorter than specified in token")
+	}
+	encryptedSegmentPayload := finalEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
+	
+	// Any data after encryptedSegmentPayload is considered padding and ignored.
 	if len(encryptedSegmentPayload) < TagLen {
 		return nil, nil, nil, fmt.Errorf("encrypted segment payload too short for tag")
 	}
@@ -415,20 +453,21 @@ func DeobfuscateModeHTTPFragment(in []byte) ([]byte, []byte, []byte, error) {
 
 const (
 	ntpPacketLen = 48 // Standard NTP packet length
+	ntpEmbedOffset = 16 // Offset where reference ID starts, good embedding point
 )
 
 // ObfuscateModeNTPRequest crafts a packet that mimics an NTP client request.
 // It embeds segmentStateToken, nonce, and encryptedSegmentPayload into the NTP packet's unused/randomizable fields.
 func ObfuscateModeNTPRequest(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
 	// Total data to embed: SegmentStateToken + Nonce + Encrypted Segment Payload
-	embeddedData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
-	embeddedData = append(embeddedData, segmentStateToken...)
-	embeddedData = append(embeddedData, nonce...)
-	embeddedData = append(embeddedData, encryptedSegmentPayload...)
+	embeddedCoreData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
+	embeddedCoreData = append(embeddedCoreData, segmentStateToken...)
+	embeddedCoreData = append(embeddedCoreData, nonce...)
+	embeddedCoreData = append(embeddedCoreData, encryptedSegmentPayload...)
 
 	// Create a standard NTP client request packet (RFC 5905)
 	// Most fields are fixed for a client request, but some are randomizable or unused.
-	// We'll embed data into the "Transmit Timestamp" and subsequent unused fields.
+	// We'll embed data into the "Reference ID" and subsequent fields (until Transmit Timestamp).
 	packet := make([]byte, ntpPacketLen)
 
 	// Set LI (0), VN (3), Mode (3 - client)
@@ -449,13 +488,7 @@ func ObfuscateModeNTPRequest(randSrc *mrand.Rand, segmentStateToken, nonce, encr
 	// Root Dispersion (4 bytes): random value
 	binary.BigEndian.PutUint32(packet[8:12], randSrc.Uint32())
 
-	// Reference ID (4 bytes): random value or plausible source ID
-	binary.BigEndian.PutUint32(packet[12:16], randSrc.Uint32())
-
-	// Reference Timestamp (8 bytes): 0 for client request
-	// Origin Timestamp (8 bytes): 0 for client request
-	// Receive Timestamp (8 bytes): 0 for client request
-
+	// Reference ID (4 bytes): This is the first embedding point
 	// Transmit Timestamp (8 bytes): This is the client's send time.
 	// We'll embed our data here and in subsequent unused fields.
 	// NTP timestamp is seconds since 1900-01-01 00:00:00 UTC.
@@ -464,25 +497,30 @@ func ObfuscateModeNTPRequest(randSrc *mrand.Rand, segmentStateToken, nonce, encr
 	seconds := uint32(now.Sub(ntpEpoch).Seconds())
 	fraction := uint32(float64(now.Nanosecond()) / 1e9 * math.MaxUint32) // Fractional part
 
-	transmitTimestamp := make([]byte, 8)
-	binary.BigEndian.PutUint32(transmitTimestamp[0:4], seconds)
-	binary.BigEndian.PutUint32(transmitTimestamp[4:8], fraction)
+	transmitTimestampBytes := make([]byte, 8)
+	binary.BigEndian.PutUint32(transmitTimestampBytes[0:4], seconds)
+	binary.BigEndian.PutUint32(transmitTimestampBytes[4:8], fraction)
 
-	// Embed embeddedData into transmitTimestamp and subsequent fields
-	// Starting from Transmit Timestamp (offset 40)
-	embedOffset := 40
-	if len(embeddedData) > 0 {
-		copy(packet[embedOffset:], embeddedData[:min(len(embeddedData), ntpPacketLen-embedOffset)])
-		// Note: NTP packet is fixed 48 bytes. If embeddedData is larger, it will be truncated.
-		// A more robust solution would be to fragment embeddedData across multiple NTP packets
-		// or use a different disguise if data is too large.
-	}
-	// Fill remaining with random bytes if embeddedData was smaller
-	_, err := GenerateRandomBytes(ntpPacketLen - embedOffset - len(embeddedData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes for NTP padding: %w", err)
+	// Available space for embedding: from ntpEmbedOffset to end of packet
+	availableSpace := ntpPacketLen - ntpEmbedOffset
+
+	if len(embeddedCoreData) > availableSpace {
+		return nil, fmt.Errorf("embedded data (%d bytes) too large for NTP packet available space (%d bytes)", len(embeddedCoreData), availableSpace)
 	}
 
+	// Copy embedded data starting from ntpEmbedOffset
+	copy(packet[ntpEmbedOffset:], embeddedCoreData)
+
+	// Fill remaining space with random bytes
+	remainingSpace := availableSpace - len(embeddedCoreData)
+	if remainingSpace > 0 {
+		randomPadding, err := GenerateRandomBytes(remainingSpace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate random bytes for NTP padding: %w", err)
+		}
+		copy(packet[ntpEmbedOffset+len(embeddedCoreData):], randomPadding)
+	}
+	
 	return packet, nil
 }
 
@@ -497,23 +535,37 @@ func DeobfuscateModeNTPRequest(in []byte) ([]byte, []byte, []byte, error) {
 		return nil, nil, nil, fmt.Errorf("NTP header mismatch: 0x%X", in[0])
 	}
 
-	// Extract embedded data from Transmit Timestamp and subsequent fields
-	// Starting from Transmit Timestamp (offset 40)
-	extractOffset := 40
-	embeddedData := in[extractOffset:]
+	// Extract embedded data from the embedding offset
+	embeddedData := in[ntpEmbedOffset:]
 
-	// Extract SegmentStateToken, Nonce, Encrypted Payload
-	if len(embeddedData) < SegmentStateTokenLen+NonceLen+TagLen {
-		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token, nonce, and tag")
+	// Extract SegmentStateToken
+	if len(embeddedData) < SegmentStateTokenLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for segment state token")
 	}
-
 	segmentStateToken := embeddedData[0:SegmentStateTokenLen]
 	currentEmbeddedOffset := SegmentStateTokenLen
 
+	// Extract metadata from token to get encryptedPayloadLen
+	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
+	}
+
+	// Extract Nonce
+	if len(embeddedData)-currentEmbeddedOffset < NonceLen {
+		return nil, nil, nil, fmt.Errorf("embedded data too short for nonce")
+	}
 	nonce := embeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
 	currentEmbeddedOffset += NonceLen
 
-	encryptedSegmentPayload := embeddedData[currentEmbeddedOffset:]
+	// Extract Encrypted Payload based on embedded length
+	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
+	if len(embeddedData) < expectedEncryptedEnd {
+		return nil, nil, nil, fmt.Errorf("embedded data truncated, encrypted payload shorter than specified in token")
+	}
+	encryptedSegmentPayload := embeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
+	
+	// Any data after encryptedSegmentPayload is considered padding and ignored.
 	if len(encryptedSegmentPayload) < TagLen {
 		return nil, nil, nil, fmt.Errorf("encrypted segment payload too short for tag")
 	}
@@ -525,65 +577,80 @@ func DeobfuscateModeNTPRequest(in []byte) ([]byte, []byte, []byte, error) {
 // --- Mode E: Decoy Packet Generation ---
 
 const (
-	decoyMinLen = 100 // Minimum length for a believable decoy packet
-	decoyMaxLen = 500 // Maximum length for a believable decoy packet
+	decoyMagicLen     = 4 // Length of magic bytes
+	decoyMagic        = 0xDECAFBAD // "DECAFBAD" in hex
+	decoyHMACSize     = HMACSize // Use standard HMAC size
+	decoyMinTotalLen  = decoyMagicLen + decoyHMACSize + MinDynamicPadding // Minimum length for a believable decoy packet
+	decoyMaxTotalLen  = decoyMagicLen + decoyHMACSize + MaxDynamicPadding // Maximum length for a believable decoy packet
 )
 
 // ObfuscateModeDecoy generates a decoy packet that looks like legitimate traffic
 // but contains no actual payload. It uses the cumulative hash to vary its appearance.
-func ObfuscateModeDecoy(randSrc *mrand.Rand, cumulativeHash []byte) ([]byte, error) {
-	// Decoy packets can mimic any of the other modes, but with random data
-	// and without embedding SegmentStateToken/Nonce/Payload.
-	// For simplicity, let's make it mimic a random HTTP GET request.
-
-	decoyLen := randSrc.Intn(decoyMaxLen-decoyMinLen+1) + decoyMinLen
-	decoyPacket := make([]byte, decoyLen)
-	_, err := GenerateRandomBytes(decoyLen) // Fill with random bytes
+// Decoy packet structure: [DecoyMagicBytes] + [DecoyHMAC] + [RandomPadding]
+// DecoyHMAC is HMAC(PSK, cumulativeHash, DecoyMagicBytes + RandomPadding).
+func ObfuscateModeDecoy(randSrc *mrand.Rand, psk []byte, cumulativeHash []byte) ([]byte, error) {
+	paddingLen := randSrc.Intn(MaxDynamicPadding-MinDynamicPadding+1) + MinDynamicPadding
+	randomPadding, err := GenerateRandomBytes(paddingLen)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes for decoy: %w", err)
-	}
-	
-	// Make it look like a generic HTTP GET
-	httpGetLine := []byte("GET / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: Mozilla/5.0\r\n\r\n")
-	if len(httpGetLine) < len(decoyPacket) {
-		copy(decoyPacket, httpGetLine)
-	} else {
-		copy(decoyPacket, httpGetLine[:len(decoyPacket)])
-	}
-	
-	// Add some random bytes to the end to make it variable
-	if len(decoyPacket) > len(httpGetLine) {
-		_, err = GenerateRandomBytes(len(decoyPacket) - len(httpGetLine))
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate random bytes for decoy padding: %w", err)
-		}
+		return nil, fmt.Errorf("failed to generate random padding for decoy: %w", err)
 	}
 
-	return decoyPacket, nil
+	decoyMagicBytes := make([]byte, decoyMagicLen)
+	binary.BigEndian.PutUint32(decoyMagicBytes, decoyMagic)
+
+	// Data for HMAC calculation: DecoyMagicBytes + RandomPadding
+	hmacData := append(decoyMagicBytes, randomPadding...)
+
+	// Derive a specific HMAC key for decoy packets, using cumulative hash
+	decoyHMACKey, err := DeriveKey(psk, "cosmicdust_decoy_hmac_salt", cumulativeHash, HMACKeyLen)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive decoy HMAC key: %w", err)
+	}
+	mac := hmac.New(sha256.New, decoyHMACKey)
+	mac.Write(hmacData)
+	computedHMAC := mac.Sum(nil)
+
+	packet := make([]byte, decoyMagicLen+decoyHMACSize+paddingLen)
+	copy(packet[0:decoyMagicLen], decoyMagicBytes)
+	copy(packet[decoyMagicLen:decoyMagicLen+decoyHMACSize], computedHMAC)
+	copy(packet[decoyMagicLen+decoyHMACSize:], randomPadding)
+
+	return packet, nil
 }
 
 // DeobfuscateModeDecoy attempts to identify if an incoming packet is a decoy.
 // It returns true if it's a decoy, false otherwise, and an error if parsing fails.
-// This is a heuristic check; a real system might use a specific magic number or pattern.
-func DeobfuscateModeDecoy(in []byte) (bool, error) {
-	// For a real decoy, you'd embed a specific, HMAC-protected "decoy marker"
-	// that is distinct from the SegmentStateToken.
-	// Here, we'll use a simple heuristic: if it looks like a generic HTTP GET
-	// but doesn't contain a valid SegmentStateToken when parsed by other modes,
-	// it *might* be a decoy. This is highly unreliable for production.
-
-	// A more robust decoy detection:
-	// 1. Decoy packets have a specific magic number/header that no other mode uses.
-	// 2. This magic number is followed by an HMAC derived from PSK and current global state hash.
-	// 3. Decoy packets explicitly state they are decoys.
-
-	// For now, let's assume a decoy is a simple HTTP GET that is not parseable by other modes.
-	// This function would be called *after* other modes fail to parse.
-	// If it starts with "GET / HTTP/1.1" and is within decoy length range, we'll consider it.
-	if len(in) >= len("GET / HTTP/1.1") && bytes.HasPrefix(in, []byte("GET / HTTP/1.1")) {
-		if len(in) >= decoyMinLen && len(in) <= decoyMaxLen {
-			// This is a plausible decoy.
-			return true, nil
-		}
+// It strictly verifies the magic bytes and the HMAC.
+func DeobfuscateModeDecoy(psk []byte, cumulativeHash []byte, in []byte) (bool, error) {
+	if len(in) < decoyMagicLen+decoyHMACSize {
+		return false, fmt.Errorf("decoy packet too short for magic and HMAC")
 	}
-	return false, fmt.
+
+	receivedMagicBytes := in[0:decoyMagicLen]
+	receivedHMAC := in[decoyMagicLen : decoyMagicLen+decoyHMACSize]
+	receivedPadding := in[decoyMagicLen+decoyHMACSize:]
+
+	// 1. Check Magic Bytes
+	expectedMagicBytes := make([]byte, decoyMagicLen)
+	binary.BigEndian.PutUint32(expectedMagicBytes, decoyMagic)
+	if !bytes.Equal(receivedMagicBytes, expectedMagicBytes) {
+		return false, fmt.Errorf("decoy magic bytes mismatch")
+	}
+
+	// 2. Recompute HMAC and verify
+	hmacData := append(receivedMagicBytes, receivedPadding...)
+	decoyHMACKey, err := DeriveKey(psk, "cosmicdust_decoy_hmac_salt", cumulativeHash, HMACKeyLen)
+	if err != nil {
+		return false, fmt.Errorf("failed to derive decoy HMAC key during verification: %w", err)
+	}
+	mac := hmac.New(sha256.New, decoyHMACKey)
+	mac.Write(hmacData)
+	computedHMAC := mac.Sum(nil)
+
+	if !bytes.Equal(computedHMAC, receivedHMAC) {
+		return false, fmt.Errorf("decoy HMAC verification failed")
+	}
+
+	// If both magic bytes and HMAC are valid, it's a legitimate decoy.
+	return true, nil
+}
