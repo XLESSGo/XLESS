@@ -38,7 +38,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: tobyxdd/hysteria:latest,tobyxdd/hysteria:v2,tobyxdd/hysteria:${{ steps.get_version.outputs.version }}
+          tags: XLESSGo/XLESS:latest,XLESSGo/XLESS:v1,XLESSGo/XLESS:${{ steps.get_version.outputs.version }}
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
