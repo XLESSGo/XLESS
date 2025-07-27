@@ -2,12 +2,11 @@ package hypernova
 
 import (
 	"bytes"
-	"crypto/rand" // Import crypto/rand for secure random bytes
+	// Removed "crypto/rand" as it's not directly used here
 	"encoding/binary"
 	"fmt"
-	"math"      // Import math for math.MaxInt32
+	"math"
 	mrand "math/rand"
-	"strings" // Keep strings as it's used
 )
 
 // Disguise mode identifiers
@@ -531,7 +530,7 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 		}
 		
 		listBytes := make([]byte, 4 + len(nameListContent))
-		binary.BigEndian.PutUint32(listBytes[0:4], uint32(len(nameListLen))) // Corrected: Should be len(nameListContent)
+		binary.BigEndian.PutUint32(listBytes[0:4], uint32(len(nameListContent))) // Corrected: Should be len(nameListContent)
 		copy(listBytes[4:], nameListContent)
 		return listBytes, nil
 	}
