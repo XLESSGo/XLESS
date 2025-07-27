@@ -6,11 +6,10 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
-// 常见API路径池
+// Common API Path Pool
 var commonAPIPaths = []string{
 	"/api/v1/auth", "/user/login", "/oauth/token", "/session/create",
 	"/api/session", "/auth/v2/login", "/web/auth/verify",
