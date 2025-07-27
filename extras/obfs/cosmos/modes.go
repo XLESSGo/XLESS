@@ -210,7 +210,6 @@ func deobfuscateModeB(in []byte) ([]byte, []byte, []byte, error) {
 	if suffixPaddingLenStart < 0 || len(in) < suffixPaddingLenStart+2 {
 		return nil, nil, nil, fmt.Errorf("suffix padding length field missing or truncated")
 	}
-	suffixPaddingLen := int(binary.BigEndian.Uint16(in[suffixPaddingLenStart : suffixPaddingLenStart+2]))
 
 	// The encrypted payload is everything between (Nonce end) and (Suffix padding length start).
 	encryptedPayloadWithTagEnd := suffixPaddingLenStart
