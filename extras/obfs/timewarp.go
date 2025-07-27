@@ -199,7 +199,6 @@ func (o *TimeWarpObfuscator) Deobfuscate(in, out []byte) int {
 	}
 
 	// Extract basic info from de-obfuscated header
-	packetID := binary.BigEndian.Uint32(controlHeaderBase[0:4])
 	numChunks := int(controlHeaderBase[4])
 	chunkSize := int(controlHeaderBase[5])
 
