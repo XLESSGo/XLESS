@@ -1,7 +1,6 @@
 package obfs
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,6 +8,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/blake2b"
 	mrand "math/rand"
+	"math"
 	"sync"
 	"time"
 )
@@ -176,7 +176,6 @@ func (o *NebulaObfuscator) Deobfuscate(in, out []byte) int {
 		fragHeader := in[currentReadOffset : currentReadOffset+nebulaFragmentHeaderLen]
 		packetID := binary.BigEndian.Uint32(fragHeader[0:4])
 		fragmentIndex := fragHeader[4]
-		totalFragments := fragHeader[5]
 		encryptedFragWithNonceAndTagLen := int(binary.BigEndian.Uint16(fragHeader[6:8]))
 
 		expectedFragLen := nebulaFragmentHeaderLen + encryptedFragWithNonceAndTagLen
