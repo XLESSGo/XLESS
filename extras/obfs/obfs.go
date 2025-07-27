@@ -2,6 +2,8 @@ package obfs
 
 import (
 	"fmt"
+
+	cosmos "github.com/XLESSGo/XLESS/extras/obfs/cosmos"
 )
 
 // Obfuscator is the interface that wraps the Obfuscate and Deobfuscate methods.
