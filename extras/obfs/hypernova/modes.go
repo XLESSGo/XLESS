@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"      // Import math for math.MaxInt32
 	mrand "math/rand"
-	"strings" // Keep strings as it's used
 )
 
 // Disguise mode identifiers
