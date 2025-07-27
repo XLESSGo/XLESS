@@ -1,7 +1,6 @@
 package obfs
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
