@@ -75,6 +75,7 @@ type clientConfig struct {
 	UDPTProxy     *udpTProxyConfig      `mapstructure:"udpTProxy"`
 	TCPRedirect   *tcpRedirectConfig    `mapstructure:"tcpRedirect"`
 	TUN           *tunConfig            `mapstructure:"tun"`
+	DecoyURL      string                `mapstructure:"decoyURL"` 
 }
 
 type clientConfigTransportUDP struct {
@@ -424,6 +425,7 @@ func (c *clientConfig) Config() (*client.Config, error) {
 		c.fillQUICConfig,
 		c.fillBandwidthConfig,
 		c.fillFastOpen,
+		c.fillDecoyURL, 
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
@@ -837,6 +839,14 @@ func parseServerAddrString(addrStr string) (host, port, hostPort string) {
 		return addrStr, "443", net.JoinHostPort(addrStr, "443")
 	}
 	return h, p, addrStr
+}
+
+func (c *clientConfig) fillDecoyURL(hyConfig *client.Config) error {
+    if c.DecoyURL == "" {
+        return configError{Field: "decoyURL", Err: errors.New("decoyURL is empty")}
+    }
+    hyConfig.DecoyURL = c.DecoyURL
+    return nil
 }
 
 // isPortHoppingPort returns whether the port string is a port hopping port.

@@ -71,6 +71,7 @@ type serverConfig struct {
 	Outbounds             []serverConfigOutboundEntry `mapstructure:"outbounds"`
 	TrafficStats          serverConfigTrafficStats    `mapstructure:"trafficStats"`
 	Masquerade            serverConfigMasquerade      `mapstructure:"masquerade"`
+	DecoyURL              string                      `mapstructure:"decoyURL"` // 新
 }
 
 // serverConfigObfs 结构体现在直接嵌入 obfs.ObfuscatorConfig
@@ -459,6 +460,14 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		hyConfig.TLSConfig.GetCertificate = cmCfg.GetCertificate
 	}
 	return nil
+}
+
+func (c *serverConfig) fillDecoyURL(hyConfig *server.Config) error {
+    if c.DecoyURL == "" {
+        return configError{Field: "decoyURL", Err: errors.New("decoyURL is empty")}
+    }
+    hyConfig.DecoyURL = c.DecoyURL
+    return nil
 }
 
 func genZeroSSLEAB(email string) (*acme.EAB, error) {
@@ -905,6 +914,7 @@ func (c *serverConfig) Config() (*server.Config, error) {
 		c.fillEventLogger,
 		c.fillTrafficLogger,
 		c.fillMasqHandler,
+		c.fillDecoyURL,
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {

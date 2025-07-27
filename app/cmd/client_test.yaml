@@ -2,6 +2,8 @@ server: example.com
 
 auth: weak_ahh_password
 
+decoyURL: "https://www.example.com"  # REQUIRED for obfuscated authentication and decoy browsing
+
 transport:
   type: udp
   udp:
