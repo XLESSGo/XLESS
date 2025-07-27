@@ -107,7 +107,6 @@ func (o *HypernovaObfuscator) Obfuscate(in, out []byte) int {
 
 	// 3. Encrypt the original payload
 	encryptedPayload := aesgcm.Seal(nil, nonce, in, nil)
-	payloadWithTagLen := len(encryptedPayload) // Length of (ciphertext + tag)
 
 	// 4. Generate state token (HMAC over sequence number, cumulative hash, and encrypted payload)
 	stateToken, err := GenerateStateToken(o.PSK, o.sendSequenceNumber, o.cumulativeStateHash, encryptedPayload)
