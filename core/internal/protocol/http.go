@@ -34,8 +34,20 @@ func AuthRequestFromObfuscated(r *http.Request) AuthRequest {
 	}
 	cookieHeader := r.Header.Get("Cookie")
 	if strings.Contains(cookieHeader, "session_id=") {
-		// optionally parse session_id as fallback
-		// ... (not required for spec)
+		// Optionally parse session_id from Cookie as a fallback if Authorization is empty
+		parts := strings.Split(cookieHeader, ";")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, "session_id=") {
+				val := strings.TrimPrefix(part, "session_id=")
+				val = strings.TrimSpace(val)
+				// Use session_id only if auth is still empty
+				if auth == "" && val != "" {
+					auth = val
+				}
+				break
+			}
+		}
 	}
 	// Default RX rate to 0 (unknown)
 	var rx uint64 = 0
