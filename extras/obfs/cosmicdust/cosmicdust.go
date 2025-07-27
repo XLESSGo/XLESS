@@ -24,8 +24,9 @@ const (
 	SegmentIDLen       = 8  // Unique ID for the original packet (uint64)
 	SegmentIndexLen    = 2  // Index of the segment (uint16)
 	TotalSegmentsLen   = 2  // Total number of segments for the packet (uint16)
-	SegmentHeaderLen   = SegmentIDLen + SegmentIndexLen + TotalSegmentsLen // Metadata for each segment
-	SegmentStateTokenLen = SegmentHeaderLen + HMACSize // Segment Header + HMAC for integrity
+	EncryptedPayloadLenBytes = 2 // Length of encrypted payload (uint16) embedded in token
+	SegmentMetadataLen = SegmentIDLen + SegmentIndexLen + TotalSegmentsLen + EncryptedPayloadLenBytes // Metadata for each segment
+	SegmentStateTokenLen = SegmentMetadataLen + HMACSize // Segment Header + HMAC for integrity
 	
 	MaxSegmentPayloadSize = 1200 // Max plaintext payload size for a single segment (e.g., to fit in common MTUs)
 	MinSegmentPayloadSize = 100  // Min plaintext payload size for a single segment
@@ -155,7 +156,7 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte) ([][]byte, error) {
 		encryptedSegmentWithTagLen := len(encryptedSegment)
 
 		// 2.4 Generate SegmentStateToken
-		segmentStateToken, err := GenerateSegmentStateToken(o.PSK, currentPacketID, segmentIndex, totalSegments, o.cumulativeStateHash, encryptedSegment)
+		segmentStateToken, err := GenerateSegmentStateToken(o.PSK, currentPacketID, segmentIndex, totalSegments, uint16(encryptedSegmentWithTagLen), o.cumulativeStateHash, encryptedSegment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate segment state token for segment %d: %w", i, err)
 		}
@@ -186,7 +187,7 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte) ([][]byte, error) {
 
 		// Optional: Insert decoy packets periodically
 		if o.randSrc.Intn(DecoyFrequency) == 0 {
-			decoyPacket, err := ObfuscateModeDecoy(o.randSrc, o.cumulativeStateHash)
+			decoyPacket, err := ObfuscateModeDecoy(o.randSrc, o.PSK, o.cumulativeStateHash)
 			if err != nil {
 				fmt.Printf("Warning: failed to generate decoy packet: %v\n", err)
 			} else {
@@ -241,7 +242,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		case ModeNTPRequest:
 			segmentStateToken, segmentNonce, encryptedSegmentPayload, err = DeobfuscateModeNTPRequest(in)
 		case ModeDecoy: // Handle decoy packets
-			isDecoy, decoyErr := DeobfuscateModeDecoy(in)
+			isDecoy, decoyErr := DeobfuscateModeDecoy(o.PSK, o.cumulativeStateHash, in)
 			if isDecoy && decoyErr == nil {
 				// This is a legitimate decoy packet, just discard it.
 				return 0, nil // Return 0 length, no error for a valid decoy
@@ -264,7 +265,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 	}
 
 	// 2. Extract segment metadata from SegmentStateToken
-	packetID, segmentIndex, totalSegments, err := ExtractSegmentMetadata(segmentStateToken)
+	packetID, segmentIndex, totalSegments, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
 	if err != nil {
 		return 0, fmt.Errorf("failed to extract segment metadata: %w", err)
 	}
@@ -277,8 +278,13 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		return 0, fmt.Errorf("received packet ID %d does not match expected %d", packetID, o.recvPacketID)
 	}
 
+	// Verify that the extracted encryptedPayloadLen matches the actual length of encryptedSegmentPayload
+	if encryptedPayloadLen != uint16(len(encryptedSegmentPayload)) {
+		return 0, fmt.Errorf("encrypted payload length mismatch: token says %d, actual %d", encryptedPayloadLen, len(encryptedSegmentPayload))
+	}
+
 	// 3. Verify SegmentStateToken (HMAC)
-	verified, err := VerifySegmentStateToken(o.PSK, packetID, segmentIndex, totalSegments, o.cumulativeStateHash, segmentStateToken, encryptedSegmentPayload)
+	verified, err := VerifySegmentStateToken(o.PSK, packetID, segmentIndex, totalSegments, encryptedPayloadLen, o.cumulativeStateHash, segmentStateToken, encryptedSegmentPayload)
 	if err != nil || !verified {
 		return 0, fmt.Errorf("segment state token verification failed: %w", err)
 	}
