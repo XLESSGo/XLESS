@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 	"math/rand"
-	"net/http"
+	"io"
 	"strings"
 
 	coreErrs "github.com/XLESSGo/XLESS/core/errors"
