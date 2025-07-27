@@ -34,6 +34,19 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return NewScrambleObfuscator([]byte(cfg.Password))
 	case "chameleon":
 		return NewChameleonObfuscator([]byte(cfg.Password))
+	case "polymorph":
+		return NewPolyMorphObfuscator([]byte(cfg.Password))
+	case "timewarp":
+		return NewTimeWarpObfuscator([]byte(cfg.Password))
+	case "quantumtunnel":
+		return NewQuantumTunnelObfuscator([]byte(cfg.Password))
+	case "astro":
+		return NewAstroObfuscator([]byte(cfg.Password))
+	case "nebula":
+		return NewNebulaObfuscator([]byte(cfg.Password))
+	case "cosmos":
+		// Use the NewCosmosObfuscator from the new cosmos package
+		return cosmos.NewCosmosObfuscator([]byte(cfg.Password))
 	case "stealthflow":
 		// For StealthFlow, we'll use the password as the base for key derivation.
 		// More complex configurations (e.g., specific fake hosts) could be added to ObfuscatorConfig.
@@ -45,3 +58,4 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
 }
+
