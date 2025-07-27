@@ -1,72 +1,103 @@
-# Hysteria 2 Protocol Specification
+# XLESS Protocol Specification
 
-Hysteria is a TCP & UDP proxy based on QUIC, designed for speed, security and censorship resistance. This document describes the protocol used by Hysteria starting with version 2.0.0, sometimes internally referred to as the "v4" protocol. From here on, we will call it "the protocol" or "the Hysteria protocol".
+XLESS is a TCP and UDP proxy protocol built on QUIC, designed to provide speed, security, and censorship resistance. This document describes the protocol used by XLESS starting from version 1.0.0. From now on, we will refer to it as "the protocol" or "the XLESS protocol."
 
-## Requirements Language
+## Language Requirements
 
-The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://tools.ietf.org/html/rfc2119).
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
 
-## Underlying Protocol & Wire Format
+## Underlying Protocol and Data Formats
 
-The Hysteria protocol MUST be implemented on top of the standard QUIC transport protocol [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) with [Unreliable Datagram Extension](https://datatracker.ietf.org/doc/rfc9221/).
+The XLESS protocol **MUST** be implemented on top of the standard QUIC transport protocol (RFC 9000) and the [Unreliable Datagram Extension](https://www.google.com/search?q=https://www.ietf.org/archive/id/draft-ietf-quic-datagram-03.html).
 
-All multibyte numbers use Big Endian format.
+All multi-byte numbers **MUST** use big-endian format.
 
-All variable-length integers ("varints") are encoded/decoded as defined in QUIC (RFC 9000).
+All variable-length integers ("varints") **MUST** be encoded/decoded consistently with how they are defined in QUIC (RFC 9000).
 
-## Authentication & HTTP/3 masquerading
+-----
 
-One of the key features of the Hysteria protocol is that to a third party without proper authentication credentials (whether it's a middleman or an active prober), a Hysteria proxy server behaves just like a standard HTTP/3 web server. Additionally, the encrypted traffic between the client and the server appears indistinguishable from normal HTTP/3 traffic.
+## Authentication and HTTP/3 Obfuscation
 
-Therefore, a Hysteria server MUST implement an HTTP/3 server (as defined by [RFC 9114](https://datatracker.ietf.org/doc/rfc9114/)) and handle HTTP requests as any standard web server would. To prevent active probers from detecting common response patterns in Hysteria servers, implementations SHOULD advise users to either host actual content or set it up as a reverse proxy for other sites.
+One of the key features of the XLESS protocol is that for third parties without correct authentication credentials (whether they are middlemen or active probes), the XLESS proxy server behaves exactly like a standard HTTP/3 Web server. Furthermore, the encrypted traffic between the client and server is indistinguishable in appearance from normal HTTP/3 traffic.
 
-An actual Hysteria client, upon connection, MUST send the following HTTP/3 request to the server:
+Therefore, an XLESS server **MUST** implement an HTTP/3 server (as defined by RFC 9114) and process HTTP requests like any standard Web server. To prevent active probes from detecting common response patterns in XLESS servers, implementers **SHOULD** recommend that users either host actual content or set it up as a reverse proxy for another site.
 
-```
-:method: POST
-:path: /auth
-:host: hysteria
-Hysteria-Auth: [string]
-Hysteria-CC-RX: [uint]
-Hysteria-Padding: [string]
-```
+After the QUIC connection is established and the handshake is completed, the XLESS server **MUST** immediately enter a transparent forwarding state. In this state, the XLESS server acts as a Man-in-the-Middle (MITM) proxy, transparently forwarding every client packet to a pre-configured, legitimate, publicly accessible decoy web service. The XLESS server **MUST** ensure that a connection has been established with the decoy web service and is ready for forwarding. This transparent forwarding of all client packets **MUST** continue uninterrupted until the server receives a specific XLESS authentication request packet.
 
-`Hysteria-Auth`: Authentication credentials.
+During this transparent forwarding phase, the XLESS client **MUST** engage in simulated normal web Browse activity with the decoy service:
 
-`Hysteria-CC-RX`: Client's maximum receive rate in bytes per second. A value of 0 indicates unknown.
+  * The client's first request **MUST** be for the decoy service's `index.html` page.
+  * Upon receiving the `index.html` response, the client **MUST** parse the page to find included link paths (e.g., image, CSS, JS links). The client **MUST** then randomly select 2 to 4 of these link paths and request them in sequence.
+  * If `index.html` contains fewer than 2 to 4 link paths, the client **MUST** request all available link paths.
+  * If no link paths are found in `index.html`, the client **MUST** immediately proceed to the XLESS authentication phase.
 
-`Hysteria-Padding`: A random padding string of variable length.
+After completing the simulated Browse described above, or if no link paths were found, the XLESS client will send an HTTP/3 request that appears regular but contains authentication information, within the ongoing transparently forwarded HTTP/3 traffic. This authentication request **MUST NOT** use a fixed `/auth` path or specific XLESS custom headers, but instead **MUST** employ deep obfuscation through the following combined strategies:
 
-The Hysteria server MUST identify this special request, and, instead of attempting to serve content or forwarding it to an upstream site, it MUST authenticate the client using the provided information. If authentication is successful, the server MUST send the following response (HTTP status code 233):
+### Diversification and Dynamism of Authentication Paths:
 
-```
-:status: 233 HyOK
-Hysteria-UDP: [true/false]
-Hysteria-CC-RX: [uint/"auto"]
-Hysteria-Padding: [string]
-```
+  * The client and server **MUST** have a built-in large and continuously updated list of common API paths. This list **SHOULD** include common internet API paths used for user authentication or session management (e.g., `/api/v1/auth`, `/user/login`, `/oauth/token`, `/session/create`, `/api/session`, `/auth/v2/login`, `/web/auth/verify`, etc.).
+  * For each authentication attempt, the client **MUST** randomly select a path from this list.
+  * After the selected path, the client **MUST** randomly add 2-5 seemingly meaningless but structurally normal query parameters (e.g., `?ts=1704067200&client_id=web_app_xyz&ref=home_page&nonce=random_string`). Parameter names and values **MAY** be randomly combined from a preset list, and the server **MUST** ignore these parameters.
 
-`Hysteria-UDP`: Whether the server supports UDP relay.
+### Obfuscation and Standardization of HTTP Headers:
 
-`Hysteria-CC-RX`: Server's maximum receive rate in bytes per second. A value of 0 indicates unlimited; "auto" indicates the server refuses to provide a value and ask the client to use congestion control to determine the rate on its own.
+  * **Standardized Embedding of Authentication Credentials:** XLESS authentication data **MUST** be encapsulated in a format similar to JWT or other common API tokens, and embedded in standard HTTP headers, such as `Authorization: Bearer [XLESS_AUTH_TOKEN]` or `Cookie: session_id=[XLESS_AUTH_TOKEN]; user_token=[MORE_PADDING]`.
+  * **Obfuscation of Client Rate:** The actual value of the client's receive rate (`XLESS-CC-RX`) **MUST** be replaced with a more obfuscated custom header, such as `X-Client-Telemetry: {"rx_rate": [uint_val], "timestamp": "..."}` or `X-Device-Capability: {"bandwidth": [uint_val]}`.
+  * **Incorporation of Padding Content:** The content of the original `XLESS-Padding` **MUST** be integrated into other variable-length headers, such as `User-Agent` (simulating a specific browser version with appended random strings), `X-Request-ID` (forging a UUID), or a large `X-Custom-Data` header.
+  * **Supplementation and Randomization of Common HTTP Headers:** In the authentication request, the client **MUST** randomly add 5-10 common HTTP headers, such as `Accept`, `Accept-Encoding`, `Accept-Language`, `Cache-Control`, `Connection: keep-alive`, `Referer`, `Origin`, `Sec-Fetch-Mode`, etc. The values of these headers **SHOULD** mimic common values from real browsers and **MAY** be randomized in their order. The `User-Agent` header **MUST** always mimic a mainstream browser and its version, and **MAY** randomly add some minor variations.
 
-`Hysteria-Padding`: A random padding string of variable length.
+### Standardization and Randomization of Request Body (Payload):
 
-See the Congestion Control section for more information on how to use the `Hysteria-CC-RX` values.
+  * The authentication request body **MUST** use standard formats such as `application/json` or `application/x-www-form-urlencoded`, and the `Content-Type` header **MUST** be correctly set.
+  * XLESS authentication data and the actual client receive rate data **MUST** be included as field values within the JSON or form data.
+  * In the request body, the client **MUST** randomly add 3-8 meaningless fields (e.g., `random_key_1: "random_value_xyz"`, `padding_data: "long_random_string"`), and **MUST** randomize their order and length. These fields **SHOULD** resemble common additional data found in real web applications.
 
-`Hysteria-Padding` is optional and is only intended to obfuscate the request/response pattern. It SHOULD be ignored by both sides.
+### Refined Authentication Request Timing and Sequence:
 
-If authentication fails, the server MUST either act like a standard web server that does not understand the request, or in the case of being a reverse proxy, forward the request to the upstream site and return the response to the client.
+  * Between the completion of simulated Browse and sending the authentication request, the client **MUST** introduce longer, randomly distributed delays to simulate user thinking, clicking, or data entry time after Browse a page.
+  * The authentication request **SHOULD NOT** be sent immediately after simulated Browse ends. The client **MAY** randomly insert 1-3 seemingly normal auxiliary requests to the decoy service before or after the authentication request (e.g., requesting an icon, an infrequently loaded JS file, or an API path known to return 404). Responses to these requests **SHOULD** be processed normally by the client.
+  * The client **MUST** fully utilize HTTP/3's long connection feature, ensuring that the authentication request occurs over the connection established during previous simulated Browse, avoiding the creation of new connections.
 
-The client MUST check the status code to determine if the authentication was successful. If the status code is anything other than 233, the client MUST consider authentication to have failed and disconnect from the server.
+The XLESS server **MUST** identify this obfuscated authentication request and use the encapsulated information to authenticate the client.
 
-After (and only after) a client passes authentication, the server MUST consider this QUIC connection to be a Hysteria proxy connection. It MUST then start processing proxy requests from the client as described in the next section.
+### Server Processing of Authentication Requests and Responses:
+
+  * **If authentication is successful:** The server **MUST** immediately stop forwarding all traffic to the decoy service. The server **MUST** return common successful HTTP status codes, such as **200 OK**, **201 Created**, or **204 No Content**, depending on the obfuscated API path and simulated request type. The response body **MAY** be empty or contain randomly padded JSON/text.
+
+    Upon successful authentication, the server **SHOULD** provide the required information in the following response (e.g., embedded in a JSON response body):
+
+    ```json
+    {
+      // Depending on the obfuscated API path and status code, there may be no specific fields, or random padding.
+      "status": "success",
+      "data": {
+        "udp_support": [true/false],
+        "server_rx_rate": [uint_val/"auto"],
+        "session_id": "random_uuid_string", // Example, for internal XLESS negotiation or state
+        "padding": "random_string" // Padding content, integrated into other fields
+      }
+    }
+    ```
+
+      * **`udp_support`**: Indicates whether the server supports UDP relay.
+      * **`server_rx_rate`**: The server's maximum receiving rate in bytes/second. A value of `0` means unlimited; `"auto"` means the server declines to provide a value and requires the client to use congestion control to determine the rate.
+      * **`padding`**: A random padding string whose content **SHOULD** be integrated into other variable-length fields.
+
+    For more information on how the `server_rx_rate` value is used, refer to the Congestion Control section.
+
+  * **If authentication fails:** The server **MUST NOT** disconnect the client, nor **MUST** it generate an error status code or error response body itself. The server **MUST** continue to transparently forward this authentication request (as a normal request) to the upstream decoy site and return the decoy site's response to the client. The server **MUST** continue to maintain its transparent forwarding state, allowing the client to continue interacting with the decoy service, and providing an opportunity for subsequent authentication attempts.
+
+The client **MUST** determine whether authentication was successful based on the received HTTP status code and response body content.
+
+Only after the client has authenticated **MUST** the server consider this QUIC connection an XLESS proxy connection. It **MUST** then begin processing proxy requests from the client as described in the next section.
+
+-----
 
 ## Proxy Requests
 
 ### TCP
 
-For each TCP connection, the client MUST create a new QUIC bidirectional stream and send the following TCPRequest message:
+For each TCP connection, the client **MUST** create a new QUIC bidirectional stream and send the following `TCPRequest` message:
 
 ```
 [varint] 0x401 (TCPRequest ID)
@@ -76,7 +107,7 @@ For each TCP connection, the client MUST create a new QUIC bidirectional stream 
 [bytes] Random padding
 ```
 
-The server MUST respond with a TCPResponse message:
+The server **MUST** respond with a `TCPResponse` message:
 
 ```
 [uint8] Status (0x00 = OK, 0x01 = Error)
@@ -86,11 +117,11 @@ The server MUST respond with a TCPResponse message:
 [bytes] Random padding
 ```
 
-If the status is OK, the server MUST then begin forwarding data between the client and the specified TCP address until either side closes the connection. If the status is Error, the server MUST close the QUIC stream.
+If the status is `OK`, the server **MUST** then begin forwarding data between the client and the specified TCP address until either party closes the connection. If the status is `Error`, the server **MUST** close the QUIC stream.
 
 ### UDP
 
-UDP packets MUST be encapsulated in the following UDPMessage format and sent over QUIC's unreliable datagram (for both client-to-server and server-to-client):
+UDP packets **MUST** be encapsulated in the following `UDPMessage` format and sent via QUIC's unreliable datagrams (both client-to-server and server-to-client):
 
 ```
 [uint32] Session ID
@@ -102,52 +133,54 @@ UDP packets MUST be encapsulated in the following UDPMessage format and sent ove
 [bytes] Payload
 ```
 
-The client MUST use a unique Session ID for each UDP session. The server SHOULD assign a unique UDP port to each Session ID, unless it has another mechanism to differentiate packets from different sessions (e.g., symmetric NAT, varying outbound IP addresses, etc.).
+The client **MUST** use a unique `Session ID` for each UDP session. The server **SHOULD** allocate a unique UDP port for each `Session ID`, unless it has other mechanisms to distinguish packets from different sessions (e.g., symmetric NAT, different outbound IP addresses, etc.).
 
-The protocol does not provide an explicit way to close a UDP session. While a client can retain and reuse a Session ID indefinitely, the server SHOULD release and reassign the port associated with the Session ID after a period of inactivity or some other criteria. If the client sends a UDP packet to a Session ID that is no longer recognized by the server, the server MUST treat it as a new session and assign a new port.
+This protocol does not provide an explicit way to close a UDP session. While clients **MAY** retain and reuse `Session ID`s indefinitely, servers **SHOULD** release and reallocate the port associated with a `Session ID` after a period of inactivity or if other conditions are met. If a client sends a UDP packet to a `Session ID` that the server no longer recognizes, the server **MUST** treat it as a new session and allocate a new port.
 
-If a server does not support UDP relay, it SHOULD silently discard all UDP messages received from the client.
+If the server does not support UDP relay, it **SHOULD** silently drop all UDP messages received from the client.
 
-#### Fragmentation
+### Fragmentation
 
-Due to the limit imposed by QUIC's unreliable datagram channel, any UDP packet that exceeds QUIC's maximum datagram size MUST either be fragmented or discarded.
+Due to the limitations of QUIC's unreliable datagram channel, any UDP packet exceeding the QUIC maximum datagram size **MUST** be fragmented or dropped.
 
-For fragmented packets, each fragment MUST carry the same unique Packet ID. The Fragment ID, starting from 0, indicates the index out of the total Fragment Count. Both the server and client MUST wait for all fragments of a fragmented packet to arrive before processing them. If one or more fragments of a packet are lost, the entire packet MUST be discarded.
+For fragmented packets, each fragment **MUST** carry the same unique `Packet ID`. The `Fragment ID` starts from 0 and indicates the index within the total `Fragment Count`. Both the server and client **MUST** wait for all fragments of a fragmented packet to arrive before processing. If one or more fragments of a packet are lost, the entire packet **MUST** be dropped.
 
-For packets that are not fragmented, the Fragment Count MUST be set to 1. In this case, the values of Packet ID and Fragment ID are irrelevant.
+For unfragmented packets, `Fragment Count` **MUST** be set to 1. In this case, the values of `Packet ID` and `Fragment ID` are irrelevant.
+
+-----
 
 ## Congestion Control
 
-A unique feature of Hysteria is the ability to set the tx/rx (upload/download) rate on the client side. During authentication, the client sends its rx rate to the server via the `Hysteria-CC-RX` header. The server can use this to determine its transmission rate to the client, and vice versa by returning its rx rate to the client through the same header.
+A unique feature of XLESS is the ability to set send/receive (upload/download) rates on the client. During authentication, the client sends its receive rate to the server via its encapsulated rate information. The server **MAY** use this information to determine its transmission rate to the client, and vice versa, by returning its receive rate to the client.
 
 Three special cases are:
 
-- If the client sends 0, it doesn't know its own rx rate. The server MUST use a congestion control algorithm (e.g., BBR, Cubic) to adjust its transmission rate.
-- If the server responds with 0, it has no bandwidth limit. The client MAY transmit at any rate it wants.
-- If the server responds with "auto", it chooses not to specify a rate. The client MUST use a congestion control algorithm to adjust its transmission rate.
+  * If the rate indicated by the client is `0`, it means it does not know its receiving rate. The server **MUST** use a congestion control algorithm (e.g., BBR, Cubic) to adjust its transmission rate.
+  * If the rate indicated by the server in its response is `0`, it means it has no bandwidth limits. The client **MAY** transmit at any rate.
+  * If the rate indicated by the server in its response is `"auto"`, it means it chooses not to specify a rate. The client **MUST** use a congestion control algorithm to adjust its transmission rate.
+
+-----
 
 ## "Salamander" Obfuscation
 
-The Hysteria protocol supports an optional obfuscation layer codenamed "Salamander".
+The XLESS protocol supports an optional obfuscation layer, codenamed "Salamander."
 
-"Salamander" encapsulates all QUIC packets in the following format:
+"Salamander" **MUST** encapsulate all QUIC packets in the following format:
 
 ```
 [8 bytes] Salt
 [bytes] Payload
 ```
 
-For each QUIC packet, the obfuscator MUST calculate the BLAKE2b-256 hash of a randomly generated 8-byte salt appended to a user-provided pre-shared key.
+For each QUIC packet, the obfuscator **MUST** compute the BLAKE2b-256 hash of a randomly generated 8-byte salt value appended to a user-provided pre-shared key.
 
-```
-hash = BLAKE2b-256(key + salt)
-```
+$$hash = BLAKE2b-256(key + salt)$$
 
-The hash is then used to obfuscate the payload using the following algorithm:
+This hash value is then used to obfuscate the payload using the following algorithm:
 
-```
+```python
 for i in range(0, len(payload)):
     payload[i] ^= hash[i % 32]
 ```
 
-The deobfuscator MUST use the same algorithms to calculate the salted hash and deobfuscate the payload. Any invalid packet MUST be discarded.
+The de-obfuscator **MUST** use the same algorithm to compute the salted hash and de-obfuscate the payload. Any invalid packet **MUST** be dropped.

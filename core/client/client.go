@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"math/rand"
+	"io"
+	"strings"
 
 	coreErrs "github.com/XLESSGo/XLESS/core/errors"
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
@@ -64,11 +67,11 @@ type clientImpl struct {
 }
 
 func (c *clientImpl) connect() (*HandshakeInfo, error) {
+	// 1. Establish lower-level QUIC connection
 	pktConn, err := c.config.ConnFactory.New(c.config.ServerAddr)
 	if err != nil {
 		return nil, err
 	}
-	// Convert config to TLS config & QUIC config
 	tlsConfig := &tls.Config{
 		ServerName:            c.config.TLSConfig.ServerName,
 		InsecureSkipVerify:    c.config.TLSConfig.InsecureSkipVerify,
@@ -86,7 +89,6 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		EnableDatagrams:                true,
 		DisablePathManager:             true,
 	}
-	// Prepare RoundTripper
 	var conn quic.EarlyConnection
 	rt := &http3.RoundTripper{
 		TLSClientConfig: tlsConfig,
@@ -100,20 +102,43 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 			return qc, nil
 		},
 	}
-	// Send auth HTTP request
+
+	// 2. Simulate browsing the decoy site (request /index.html, extract and request 2-4 linked resources in order)
+	decoyURL := c.config.DecoyURL // Should be provided in Config and match the real decoy base URL.
+	httpClient := &http.Client{Timeout: 4 * time.Second}
+
+	// 2.1 Simulate browsing by requesting /index.html and extracting linked resources.
+	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
+
+	// 2.2 According to spec, before authentication, pick 2-4 linked resources (or all, if not enough),
+	// and request them in order, each with a random delay.
+	sendAuxiliaryRequests(httpClient, resources)
+	// If there are no linked resources, proceed to authentication immediately.
+
+	// 3. Build the obfuscated authentication request (random API path/params/headers/body)
+	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
 		URL: &url.URL{
-			Scheme: "https",
-			Host:   protocol.URLHost,
-			Path:   protocol.URLPath,
+			Scheme:   "https",
+			Host:     protocol.URLHost,
+			Path:     apiPath,
+			RawQuery: query,
 		},
 		Header: make(http.Header),
 	}
-	protocol.AuthRequestToHeader(req.Header, protocol.AuthRequest{
-		Auth: c.config.Auth,
-		Rx:   c.config.BandwidthConfig.MaxRx,
-	})
+	headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	req.Body = io.NopCloser(strings.NewReader(string(body)))
+	req.ContentLength = int64(len(body))
+	req.Header.Set("Content-Type", contentType)
+
+	// 4. Insert a random delay after simulated browsing, before sending authentication request
+	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
+
+	// 5. Send authentication request over the QUIC/HTTP3 connection
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		if conn != nil {
@@ -127,24 +152,19 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		_ = pktConn.Close()
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
-	// Auth OK
+	// 6. Authentication successful, extract response and setup congestion control
 	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
 	if authResp.RxAuto {
-		// Server asks client to use bandwidth detection,
-		// ignore local bandwidth config and use BBR
 		congestion.UseBBR(conn)
 	} else {
-		// actualTx = min(serverRx, clientTx)
 		actualTx = authResp.Rx
 		if actualTx == 0 || actualTx > c.config.BandwidthConfig.MaxTx {
-			// Server doesn't have a limit, or our clientTx is smaller than serverRx
 			actualTx = c.config.BandwidthConfig.MaxTx
 		}
 		if actualTx > 0 {
 			congestion.UseBrutal(conn, actualTx)
 		} else {
-			// We don't know our own bandwidth either, use BBR
 			congestion.UseBBR(conn)
 		}
 	}

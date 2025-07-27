@@ -1,26 +1,81 @@
 package protocol
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 const (
 	URLHost = "xless"
+	// You may ignore this fixed path for auth, since server recognizes dynamic API paths
 	URLPath = "/auth"
-
+	// ... unchanged ...
 	RequestHeaderAuth        = "xless-Auth"
 	ResponseHeaderUDPEnabled = "xless-UDP"
 	CommonHeaderCCRX         = "xless-CC-RX"
 	CommonHeaderPadding      = "xless-Padding"
-
-	StatusAuthOK = 233
+	StatusAuthOK             = 233
 )
 
-// AuthRequest is what client sends to server for authentication.
 type AuthRequest struct {
 	Auth string
 	Rx   uint64 // 0 = unknown, client asks server to use bandwidth detection
+}
+
+// Parse authentication info from a heavily obfuscated HTTP request according to XLESS SPEC.
+func AuthRequestFromObfuscated(r *http.Request) AuthRequest {
+	auth := ""
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		auth = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+	cookieHeader := r.Header.Get("Cookie")
+	if strings.Contains(cookieHeader, "session_id=") {
+		// optionally parse session_id as fallback
+		// ... (not required for spec)
+	}
+	// Default RX rate to 0 (unknown)
+	var rx uint64 = 0
+	// Try to parse X-Client-Telemetry or X-Device-Capability header as obfuscated RX
+	if telemetry := r.Header.Get("X-Client-Telemetry"); telemetry != "" {
+		var data map[string]interface{}
+		_ = json.Unmarshal([]byte(telemetry), &data)
+		if v, ok := data["rx_rate"].(float64); ok && v > 0 {
+			rx = uint64(v)
+		}
+	}
+	if rx == 0 {
+		if devcap := r.Header.Get("X-Device-Capability"); devcap != "" {
+			var data map[string]interface{}
+			_ = json.Unmarshal([]byte(devcap), &data)
+			if v, ok := data["bandwidth"].(float64); ok && v > 0 {
+				rx = uint64(v)
+			}
+		}
+	}
+	// Try JSON body (token/rx_rate fields)
+	if rx == 0 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		bodyRaw, err := io.ReadAll(r.Body)
+		if err == nil && len(bodyRaw) > 0 {
+			var body map[string]interface{}
+			_ = json.Unmarshal(bodyRaw, &body)
+			// Restore body for further reading
+			r.Body = io.NopCloser(strings.NewReader(string(bodyRaw)))
+			if v, ok := body["rx_rate"].(float64); ok && v > 0 {
+				rx = uint64(v)
+			}
+			if t, ok := body["token"].(string); ok && t != "" && auth == "" {
+				auth = t
+			}
+		}
+	}
+	return AuthRequest{
+		Auth: auth,
+		Rx:   rx,
+	}
 }
 
 // AuthResponse is what server sends to client when authentication is passed.

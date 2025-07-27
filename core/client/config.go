@@ -24,6 +24,7 @@ type Config struct {
 	QUICConfig      QUICConfig
 	BandwidthConfig BandwidthConfig
 	FastOpen        bool
+	DecoyURL        string
 
 	filled bool // whether the fields have been verified and filled
 }

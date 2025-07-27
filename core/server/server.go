@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"io"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +18,13 @@ import (
 	"github.com/XLESSGo/XLESS/core/internal/protocol"
 	"github.com/XLESSGo/XLESS/core/internal/utils"
 )
+
+// --- Dynamic API path pool, must be same as client ---
+var commonAPIPaths = []string{
+	"/api/v1/auth", "/user/login", "/oauth/token", "/session/create",
+	"/api/session", "/auth/v2/login", "/web/auth/verify",
+	"/api/user/validate", "/signin", "/accounts/session", "/v2/access", "/api/v3/authenticate",
+}
 
 const (
 	closeErrCodeOK                  = 0x100 // HTTP3 ErrCodeNoError
@@ -84,7 +94,6 @@ func (s *serverImpl) handleClient(conn quic.Connection) {
 		StreamHijacker: handler.ProxyStreamHijacker,
 	}
 	err := h3s.ServeQUICConn(conn)
-	// If the client is authenticated, we need to log the disconnect event
 	if handler.authenticated {
 		if tl := s.config.TrafficLogger; tl != nil {
 			tl.LogOnlineState(handler.authID, false)
@@ -97,81 +106,109 @@ func (s *serverImpl) handleClient(conn quic.Connection) {
 }
 
 type h3sHandler struct {
-	config *Config
-	conn   quic.Connection
-
+	config        *Config
+	conn          quic.Connection
 	authenticated bool
 	authMutex     sync.Mutex
 	authID        string
 	connID        uint32 // a random id for dump streams
-
-	udpSM *udpSessionManager // Only set after authentication
+	udpSM         *udpSessionManager
+	decoyProxy    *DecoyProxy
 }
 
 func newH3sHandler(config *Config, conn quic.Connection) *h3sHandler {
 	return &h3sHandler{
-		config: config,
-		conn:   conn,
-		connID: rand.Uint32(),
+		config:     config,
+		conn:       conn,
+		connID:     rand.Uint32(),
+		decoyProxy: NewDecoyProxy(config.DecoyURL), // Config must have DecoyURL field
 	}
 }
 
-func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost && r.Host == protocol.URLHost && r.URL.Path == protocol.URLPath {
-		h.authMutex.Lock()
-		defer h.authMutex.Unlock()
-		if h.authenticated {
-			// Already authenticated
-			protocol.AuthResponseToHeader(w.Header(), protocol.AuthResponse{
-				UDPEnabled: !h.config.DisableUDP,
-				Rx:         h.config.BandwidthConfig.MaxRx,
-				RxAuto:     h.config.IgnoreClientBandwidth,
-			})
-			w.WriteHeader(protocol.StatusAuthOK)
-			return
+// Determines if a request is an obfuscated authentication request according to XLESS SPEC.
+func isObfuscatedAuthRequest(r *http.Request) bool {
+	// 1. Path must be in API path pool
+	pathOk := false
+	for _, p := range commonAPIPaths {
+		if r.URL.Path == p {
+			pathOk = true
+			break
 		}
-		authReq := protocol.AuthRequestFromHeader(r.Header)
+	}
+	if !pathOk {
+		return false
+	}
+	// 2. Must have Authorization or Cookie header with a plausible token
+	authH := r.Header.Get("Authorization")
+	cookieH := r.Header.Get("Cookie")
+	if !strings.Contains(authH, "Bearer ") && !strings.Contains(cookieH, "session_id=") {
+		return false
+	}
+	// 3. Must have Content-Type = application/json or application/x-www-form-urlencoded
+	ctype := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(ctype, "application/json") &&
+		!strings.HasPrefix(ctype, "application/x-www-form-urlencoded") {
+		return false
+	}
+	// 4. Must have a token field in JSON body
+	if !strings.HasPrefix(ctype, "application/json") {
+		return true // skip deep check for urlencoded
+	}
+	bodyRaw, err := io.ReadAll(r.Body)
+	if err != nil || len(bodyRaw) == 0 {
+		return false
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(bodyRaw, &body)
+	// Restore the body for further reading (needed by other handlers)
+	r.Body = io.NopCloser(strings.NewReader(string(bodyRaw)))
+	_, hasToken := body["token"]
+	return hasToken
+}
+
+func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Lock for thread-safe authentication state update.
+	h.authMutex.Lock()
+	defer h.authMutex.Unlock()
+
+	// If not yet authenticated, check for obfuscated authentication request.
+	if !h.authenticated && isObfuscatedAuthRequest(r) {
+		// Parse authentication information from obfuscated request.
+		authReq := protocol.AuthRequestFromObfuscated(r)
 		actualTx := authReq.Rx
 		ok, id := h.config.Authenticator.Authenticate(h.conn.RemoteAddr(), authReq.Auth, actualTx)
 		if ok {
-			// Set authenticated flag
+			// Authentication successful, set state and apply congestion policy.
 			h.authenticated = true
 			h.authID = id
 			if h.config.IgnoreClientBandwidth {
-				// Ignore client bandwidth, always use BBR
 				congestion.UseBBR(h.conn)
 				actualTx = 0
 			} else {
-				// actualTx = min(serverTx, clientRx)
 				if h.config.BandwidthConfig.MaxTx > 0 && actualTx > h.config.BandwidthConfig.MaxTx {
-					// We have a maxTx limit and the client is asking for more than that,
-					// return and use the limit instead
 					actualTx = h.config.BandwidthConfig.MaxTx
 				}
 				if actualTx > 0 {
 					congestion.UseBrutal(h.conn, actualTx)
 				} else {
-					// Client doesn't know its own bandwidth, use BBR
 					congestion.UseBBR(h.conn)
 				}
 			}
-			// Auth OK, send response
+			// Send authentication response headers.
 			protocol.AuthResponseToHeader(w.Header(), protocol.AuthResponse{
 				UDPEnabled: !h.config.DisableUDP,
 				Rx:         h.config.BandwidthConfig.MaxRx,
 				RxAuto:     h.config.IgnoreClientBandwidth,
 			})
 			w.WriteHeader(protocol.StatusAuthOK)
-			// Call event logger
+			// Logging.
 			if tl := h.config.TrafficLogger; tl != nil {
 				tl.LogOnlineState(id, true)
 			}
 			if el := h.config.EventLogger; el != nil {
 				el.Connect(h.conn.RemoteAddr(), id, actualTx)
 			}
-			// Initialize UDP session manager (if UDP is enabled)
-			// We use sync.Once to make sure that only one goroutine is started,
-			// as ServeHTTP may be called by multiple goroutines simultaneously
+			// Initialize UDP session manager if UDP is enabled.
 			if !h.config.DisableUDP {
 				go func() {
 					sm := newUDPSessionManager(
@@ -182,14 +219,33 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					go sm.Run()
 				}()
 			}
+			return
 		} else {
-			// Auth failed, pretend to be a normal HTTP server
-			h.masqHandler(w, r)
+			// Authentication failed: transparently forward to decoy.
+			h.decoyProxy.ServeHTTP(w, r)
+			return
 		}
-	} else {
-		// Not an auth request, pretend to be a normal HTTP server
-		h.masqHandler(w, r)
 	}
+
+	// If not authenticated, transparently forward to decoy service.
+	if !h.authenticated {
+		h.decoyProxy.ServeHTTP(w, r)
+		return
+	}
+
+	// Already authenticated: respond to any further authentication request.
+	if isObfuscatedAuthRequest(r) {
+		protocol.AuthResponseToHeader(w.Header(), protocol.AuthResponse{
+			UDPEnabled: !h.config.DisableUDP,
+			Rx:         h.config.BandwidthConfig.MaxRx,
+			RxAuto:     h.config.IgnoreClientBandwidth,
+		})
+		w.WriteHeader(protocol.StatusAuthOK)
+		return
+	}
+
+	// After authentication, all non-auth HTTP requests handled as proxy (fallback handler).
+	h.masqHandler(w, r)
 }
 
 func (h *h3sHandler) ProxyStreamHijacker(ft http3.FrameType, id quic.ConnectionTracingID, stream quic.Stream, err error) (bool, error) {
