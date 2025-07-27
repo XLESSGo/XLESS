@@ -2,9 +2,12 @@ package hypernova
 
 import (
 	"bytes"
+	"crypto/rand" // Import crypto/rand for secure random bytes
 	"encoding/binary"
 	"fmt"
+	"math"      // Import math for math.MaxInt32
 	mrand "math/rand"
+	"strings"
 	"time" // For generating dynamic timestamps etc.
 )
 
@@ -33,9 +36,13 @@ func embedDataIntoVariableLengthField(data []byte, fieldLenBytes int) ([]byte, e
 	case 1:
 		buf.WriteByte(byte(len(data)))
 	case 2:
-		binary.BigEndian.PutUint16(buf.Bytes()[0:2], uint16(len(data)))
+		b := make([]byte, 2)
+		binary.BigEndian.PutUint16(b, uint16(len(data)))
+		buf.Write(b)
 	case 4:
-		binary.BigEndian.PutUint32(buf.Bytes()[0:4], uint32(len(data)))
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, uint32(len(data)))
+		buf.Write(b)
 	}
 	buf.Write(data)
 	return buf.Bytes(), nil
@@ -96,7 +103,7 @@ func ObfuscateModeTLSHandshake(randSrc *mrand.Rand, stateToken, nonce, encrypted
 
 	// Random (32 bytes): mix with sequence number for uniqueness
 	tlsRandom := make([]byte, tlsRandomLen)
-	rand.Read(tlsRandom) // Fill with crypto random bytes
+	GenerateRandomBytes(tlsRandomLen) // Fill with crypto random bytes
 	binary.BigEndian.PutUint64(tlsRandom[0:8], sequenceNumber) // Embed sequence number
 
 	// Session ID (0-32 bytes): Embed part of embeddedData here
@@ -116,7 +123,7 @@ func ObfuscateModeTLSHandshake(randSrc *mrand.Rand, stateToken, nonce, encrypted
 	numCipherSuites := randSrc.Intn(10) + tlsMinCipherSuites // 2-11 cipher suites
 	cipherSuites := make([]byte, numCipherSuites*2) // Each is 2 bytes
 	binary.BigEndian.PutUint16(cipherSuites[0:2], uint16(numCipherSuites*2)) // Length field for cipher suites
-	rand.Read(cipherSuites[2:]) // Fill with plausible but random cipher suite bytes for camouflage
+	GenerateRandomBytes(len(cipherSuites)-2) // Fill with plausible but random cipher suite bytes for camouflage
 	// Embed more data into random cipher suite values
 	if len(embeddedData) > 0 {
 		copy(cipherSuites[2:], embeddedData[:min(len(cipherSuites)-2, len(embeddedData))])
@@ -137,7 +144,7 @@ func ObfuscateModeTLSHandshake(randSrc *mrand.Rand, stateToken, nonce, encrypted
 	if len(embeddedData) > 0 {
 		copy(extensionsData, embeddedData) // Copy remaining embedded data
 	}
-	rand.Read(extensionsData[len(embeddedData):]) // Fill rest with random bytes
+	GenerateRandomBytes(len(extensionsData)-len(embeddedData)) // Fill rest with random bytes
 	
 	extensions := make([]byte, 2 + len(extensionsData)) // 2 bytes for total extensions length
 	binary.BigEndian.PutUint16(extensions[0:2], uint16(len(extensionsData)))
@@ -227,7 +234,7 @@ func DeobfuscateModeTLSHandshake(in []byte, expectedSequenceNumber uint64) ([]by
 	if len(clientHelloBody)-bodyOffset < 1 { return nil, nil, nil, fmt.Errorf("Session ID length byte missing") }
 	sessionIDLen := int(clientHelloBody[bodyOffset])
 	bodyOffset += 1
-	if len(clientHelloBody)-bodyOffset < sessionIDLen { return nil, nil, nil, fmtErrorf("Session ID truncated") }
+	if len(clientHelloBody)-bodyOffset < sessionIDLen { return nil, nil, nil, fmt.Errorf("Session ID truncated") }
 	sessionID := clientHelloBody[bodyOffset : bodyOffset+sessionIDLen]
 	bodyOffset += sessionIDLen
 
@@ -331,9 +338,9 @@ func ObfuscateModeDNSQuery(randSrc *mrand.Rand, stateToken, nonce, encryptedPayl
 	}
 
 	// QTYPE: A record
-	qType := dnsARecordType
+	qType := uint16(dnsARecordType) // Cast to uint16
 	// QCLASS: IN
-	qClass := dnsINClass
+	qClass := uint16(dnsINClass) // Cast to uint16
 
 	// Assemble DNS Header
 	dnsHeaderBuf := new(bytes.Buffer)
@@ -479,7 +486,7 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 
 	// Cookie (16 bytes): Use part of embeddedData
 	cookie := make([]byte, sshCookieLen)
-	rand.Read(cookie)
+	GenerateRandomBytes(sshCookieLen) // Use GenerateRandomBytes
 	if len(embeddedData) > 0 {
 		copy(cookie, embeddedData[:min(sshCookieLen, len(embeddedData))])
 		if len(embeddedData) > sshCookieLen {
@@ -506,7 +513,7 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 				data = []byte{}
 			}
 		}
-		rand.Read(nameListContent[len(data):]) // Fill rest with random data
+		GenerateRandomBytes(len(nameListContent)-len(data)) // Use GenerateRandomBytes
 		
 		listBytes := make([]byte, 4 + len(nameListContent))
 		binary.BigEndian.PutUint32(listBytes[0:4], uint32(len(nameListContent)))
@@ -516,19 +523,19 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 
 	// KEX algorithms
 	kexAlgos, err := createNameList(embeddedData, MinDynamicPadding, MaxDynamicPadding)
-	if err != nil { return 0 }
+	if err != nil { return 0, err }
 	kexInitBodyBuf.Write(kexAlgos)
 	
 	// Server host key algorithms
 	serverHostKeyAlgos, err := createNameList(embeddedData, MinDynamicPadding, MaxDynamicPadding)
-	if err != nil { return 0 }
+	if err != nil { return 0, err }
 	kexInitBodyBuf.Write(serverHostKeyAlgos)
 
 	// Remaining 8 name-lists, and the two boolean/uint32 fields: fill with random data or standard values.
 	// For simplicity, fill the remaining parts with random data
 	for i := 0; i < 8; i++ {
 		alg, err := createNameList([]byte{}, MinDynamicPadding/2, MaxDynamicPadding/2)
-		if err != nil { return 0 }
+		if err != nil { return 0, err }
 		kexInitBodyBuf.Write(alg)
 	}
 
@@ -550,7 +557,7 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 	}
 
 	padding := make([]byte, paddingLen)
-	rand.Read(padding) // Random padding bytes
+	GenerateRandomBytes(paddingLen) // Use GenerateRandomBytes
 
 	// Total packet length (payload + padding_length byte + padding)
 	packetLength := uint32(payloadLen + 1 + paddingLen) // +1 for padding_length byte itself
