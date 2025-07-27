@@ -7,14 +7,20 @@ ARG GOPROXY=""
 
 ENV GOPROXY ${GOPROXY}
 
-COPY . /go/src/github.com/apernet/hysteria
+# Assuming the repository path remains the same, but the internal project name changed.
+# If the GitHub repository itself also changed to 'apernet/xless', you'll need to update this line.
+COPY . /go/src/github.com/XLESSGo/XLESS
 
-WORKDIR /go/src/github.com/apernet/hysteria
+# Assuming the work directory within the builder image remains the same for the source code.
+WORKDIR /go/src/github.com/XLESSGo/XLESS
 
 RUN set -ex \
     && apk add git build-base bash python3 \
     && python hyperbole.py build -r \
-    && mv ./build/hysteria-* /go/bin/hysteria
+    # IMPORTANT: Changed 'hysteria-*' to 'xless-*' and '/go/bin/hysteria' to '/go/bin/xless'
+    # This assumes 'hyperbole.py build -r' now produces a file named 'xless-*'
+    # If the exact filename is known (e.g., 'xless-linux-amd64'), it's better to use that.
+    && mv ./build/xless-* /go/bin/xless
 
 # multi-stage builds to create the final image
 FROM alpine AS dist
@@ -34,6 +40,8 @@ RUN set -ex \
     && apk add bash tzdata ca-certificates \
     && rm -rf /var/cache/apk/*
 
-COPY --from=builder /go/bin/hysteria /usr/local/bin/hysteria
+# IMPORTANT: Changed '/go/bin/hysteria' to '/go/bin/xless' and '/usr/local/bin/hysteria' to '/usr/local/bin/xless'
+COPY --from=builder /go/bin/xless /usr/local/bin/xless
 
-ENTRYPOINT ["hysteria"]
+# IMPORTANT: Changed 'hysteria' to 'xless'
+ENTRYPOINT ["xless"]
