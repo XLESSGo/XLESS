@@ -105,7 +105,6 @@ func (o *CosmosObfuscator) Obfuscate(in, out []byte) int {
 	}
 
 	var totalOutputLen int
-	outCursor := 0
 
 	// Dynamic mode selection based on sequence number
 	if o.sequenceNumber%2 == 0 { // Mode A: HTTP GET Mimicry
