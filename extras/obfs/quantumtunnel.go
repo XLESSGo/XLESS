@@ -1,11 +1,11 @@
 package obfs
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
+	"encoding/binary"
 	"golang.org/x/crypto/blake2b"
 )
 
