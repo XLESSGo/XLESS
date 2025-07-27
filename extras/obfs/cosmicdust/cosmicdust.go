@@ -94,7 +94,7 @@ func NewCosmicDustObfuscator(psk []byte) (Obfuscator, error) {
 		sendPacketID:       1, // Start from 1
 		recvPacketID:       1, // Must be synchronized with peer
 		cumulativeStateHash: initialHash,
-		randSrc:            mrand.New(mrand.NewSource(time.Now().UnixNano()) + time.Now().UnixNano()), // Stronger seed
+		randSrc:            mrand.New(mrand.NewSource(time.Now().UnixNano())), // Corrected: Used UnixNano() directly as seed
 		recvBuffer:         make(map[uint64]map[uint16][]byte),
 		expectedTotalSegments: make(map[uint64]uint16),
 		currentReassembledSize: make(map[uint64]int),
@@ -225,7 +225,6 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		segmentStateToken       []byte
 		segmentNonce            []byte
 		encryptedSegmentPayload []byte
-		parsedMode              int
 		err                     error
 	)
 
@@ -254,7 +253,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		}
 
 		if err == nil { // Successfully parsed a mode
-			parsedMode = mode
+			// parsedMode = mode // Removed unused variable
 			foundMatch = true
 			break
 		}
