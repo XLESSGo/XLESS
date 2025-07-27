@@ -20,16 +20,17 @@ func generateHMAC(psk []byte, packetID uint64, segmentIndex uint16, cumulativeHa
 }
 
 // GenerateSegmentStateToken creates the token for each segment.
-// Token structure: [PacketID (8 bytes)] + [SegmentIndex (2 bytes)] + [TotalSegments (2 bytes)] + [HMAC (32 bytes)]
-// The HMAC covers: PacketID + SegmentIndex + TotalSegments + CumulativeHash + EncryptedSegmentPayload.
-func GenerateSegmentStateToken(psk []byte, packetID uint64, segmentIndex uint16, totalSegments uint16, cumulativeHash []byte, encryptedSegmentPayload []byte) ([]byte, error) {
-	segmentHeader := make([]byte, SegmentHeaderLen)
-	binary.BigEndian.PutUint64(segmentHeader[0:SegmentIDLen], packetID)
-	binary.BigEndian.PutUint16(segmentHeader[SegmentIDLen:SegmentIDLen+SegmentIndexLen], segmentIndex)
-	binary.BigEndian.PutUint16(segmentHeader[SegmentIDLen+SegmentIndexLen:SegmentIDLen+SegmentIndexLen+TotalSegmentsLen], totalSegments)
+// Token structure: [PacketID (8 bytes)] + [SegmentIndex (2 bytes)] + [TotalSegments (2 bytes)] + [EncryptedPayloadLen (2 bytes)] + [HMAC (32 bytes)]
+// The HMAC covers: PacketID + SegmentIndex + TotalSegments + EncryptedPayloadLen + CumulativeHash + EncryptedSegmentPayload.
+func GenerateSegmentStateToken(psk []byte, packetID uint64, segmentIndex uint16, totalSegments uint16, encryptedPayloadLen uint16, cumulativeHash []byte, encryptedSegmentPayload []byte) ([]byte, error) {
+	segmentMetadata := make([]byte, SegmentMetadataLen)
+	binary.BigEndian.PutUint64(segmentMetadata[0:SegmentIDLen], packetID)
+	binary.BigEndian.PutUint16(segmentMetadata[SegmentIDLen:SegmentIDLen+SegmentIndexLen], segmentIndex)
+	binary.BigEndian.PutUint16(segmentMetadata[SegmentIDLen+SegmentIndexLen:SegmentIDLen+SegmentIndexLen+TotalSegmentsLen], totalSegments)
+	binary.BigEndian.PutUint16(segmentMetadata[SegmentIDLen+SegmentIndexLen+TotalSegmentsLen:SegmentMetadataLen], encryptedPayloadLen)
 
-	// Data for HMAC calculation: SegmentHeader + CumulativeHash + EncryptedSegmentPayload
-	hmacData := append(segmentHeader, cumulativeHash...)
+	// Data for HMAC calculation: SegmentMetadata + CumulativeHash + EncryptedSegmentPayload
+	hmacData := append(segmentMetadata, cumulativeHash...)
 	hmacData = append(hmacData, encryptedSegmentPayload...)
 
 	computedHMAC, err := generateHMAC(psk, packetID, segmentIndex, cumulativeHash, hmacData)
@@ -38,34 +39,35 @@ func GenerateSegmentStateToken(psk []byte, packetID uint64, segmentIndex uint16,
 	}
 
 	segmentStateToken := make([]byte, SegmentStateTokenLen)
-	copy(segmentStateToken[0:SegmentHeaderLen], segmentHeader)
-	copy(segmentStateToken[SegmentHeaderLen:SegmentStateTokenLen], computedHMAC)
+	copy(segmentStateToken[0:SegmentMetadataLen], segmentMetadata)
+	copy(segmentStateToken[SegmentMetadataLen:SegmentStateTokenLen], computedHMAC)
 
 	return segmentStateToken, nil
 }
 
-// ExtractSegmentMetadata extracts PacketID, SegmentIndex, TotalSegments from the SegmentStateToken.
-func ExtractSegmentMetadata(segmentStateToken []byte) (uint64, uint16, uint16, error) {
-	if len(segmentStateToken) < SegmentHeaderLen {
-		return 0, 0, 0, fmt.Errorf("segment state token too short to extract metadata")
+// ExtractSegmentMetadata extracts PacketID, SegmentIndex, TotalSegments, and EncryptedPayloadLen from the SegmentStateToken.
+func ExtractSegmentMetadata(segmentStateToken []byte) (uint64, uint16, uint16, uint16, error) {
+	if len(segmentStateToken) < SegmentMetadataLen {
+		return 0, 0, 0, 0, fmt.Errorf("segment state token too short to extract metadata")
 	}
 	packetID := binary.BigEndian.Uint64(segmentStateToken[0:SegmentIDLen])
 	segmentIndex := binary.BigEndian.Uint16(segmentStateToken[SegmentIDLen:SegmentIDLen+SegmentIndexLen])
 	totalSegments := binary.BigEndian.Uint16(segmentStateToken[SegmentIDLen+SegmentIndexLen:SegmentIDLen+SegmentIndexLen+TotalSegmentsLen])
-	return packetID, segmentIndex, totalSegments, nil
+	encryptedPayloadLen := binary.BigEndian.Uint16(segmentStateToken[SegmentIDLen+SegmentIndexLen+TotalSegmentsLen:SegmentMetadataLen])
+	return packetID, segmentIndex, totalSegments, encryptedPayloadLen, nil
 }
 
 // VerifySegmentStateToken verifies the HMAC of a received segment state token.
-func VerifySegmentStateToken(psk []byte, packetID uint64, segmentIndex uint16, totalSegments uint16, expectedCumulativeHash []byte, receivedToken []byte, encryptedSegmentPayload []byte) (bool, error) {
+func VerifySegmentStateToken(psk []byte, packetID uint64, segmentIndex uint16, totalSegments uint16, encryptedPayloadLen uint16, expectedCumulativeHash []byte, receivedToken []byte, encryptedSegmentPayload []byte) (bool, error) {
 	if len(receivedToken) != SegmentStateTokenLen {
 		return false, fmt.Errorf("received segment state token has incorrect length: expected %d, got %d", SegmentStateTokenLen, len(receivedToken))
 	}
 
-	receivedSegmentHeader := receivedToken[0:SegmentHeaderLen]
-	receivedHMAC := receivedToken[SegmentHeaderLen:SegmentStateTokenLen]
+	receivedSegmentMetadata := receivedToken[0:SegmentMetadataLen]
+	receivedHMAC := receivedToken[SegmentMetadataLen:SegmentStateTokenLen]
 
-	// Reconstruct data for HMAC calculation: receivedSegmentHeader + expectedCumulativeHash + encryptedSegmentPayload
-	hmacData := append(receivedSegmentHeader, expectedCumulativeHash...)
+	// Reconstruct data for HMAC calculation: receivedSegmentMetadata + expectedCumulativeHash + encryptedSegmentPayload
+	hmacData := append(receivedSegmentMetadata, expectedCumulativeHash...)
 	hmacData = append(hmacData, encryptedSegmentPayload...)
 
 	computedHMAC, err := generateHMAC(psk, packetID, segmentIndex, expectedCumulativeHash, hmacData)
