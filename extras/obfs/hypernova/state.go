@@ -1,6 +1,7 @@
 package hypernova
 
 import (
+	"bytes" // Added import for bytes
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
@@ -53,7 +54,7 @@ func VerifyStateToken(psk []byte, expectedSequenceNumber uint64, expectedCumulat
 
 	receivedSequenceNum := binary.BigEndian.Uint64(token[0:SequenceNumLen])
 	receivedCumulativeHash := token[SequenceNumLen:SequenceNumLen+CumulativeHashLen]
-	receivedHMAC := token[StateTokenLen-HMACSize:]
+	receivedHMAC := token[StateTokenLen-HMACSize:] // Correctly extract received HMAC
 
 	if receivedSequenceNum != expectedSequenceNumber {
 		return false, fmt.Errorf("sequence number mismatch: expected %d, got %d", expectedSequenceNumber, receivedSequenceNum)
@@ -70,7 +71,12 @@ func VerifyStateToken(psk []byte, expectedSequenceNumber uint64, expectedCumulat
 	copy(hmacData[SequenceNumLen:SequenceNumLen+CumulativeHashLen], token[SequenceNumLen:SequenceNumLen+CumulativeHashLen])
 	copy(hmacData[SequenceNumLen+CumulativeHashLen:], encryptedPayloadWithTag)
 
-	return generateHMAC(psk, expectedCumulativeHash, hmacData) // Pass expectedCumulativeHash for key derivation consistency
+	// Compare the recomputed HMAC with the received HMAC
+	computedHMAC, err := generateHMAC(psk, expectedCumulativeHash, hmacData) // Pass expectedCumulativeHash for key derivation consistency
+	if err != nil {
+		return false, err
+	}
+	return hmac.Equal(receivedHMAC, computedHMAC), nil // Corrected comparison
 }
 
 // UpdateCumulativeHash updates the cumulative state hash based on the previous hash, sequence number, and data.
