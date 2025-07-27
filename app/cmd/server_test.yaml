@@ -1,5 +1,7 @@
 listen: :8443
 
+decoyURL: "https://www.example.com"  # REQUIRED for transparent decoy proxying
+
 obfs:
   type: salamander
   password: cry_me_a_r1ver
