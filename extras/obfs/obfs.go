@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	cosmos "github.com/XLESSGo/XLESS/extras/obfs/cosmos"
+	hypernova "github.com/XLESSGo/XLESS/extras/obfs/hypernova"
 )
 
 // Obfuscator is the interface that wraps the Obfuscate and Deobfuscate methods.
@@ -56,8 +57,13 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 	case "quantumshuffle":
 		// For QuantumShuffle, the password is also used for key derivation and randomness seeding.
 		return NewQuantumShuffleObfuscator([]byte(cfg.Password))
+	case "hypernova":
+		// Use the NewHypernovaObfuscator from the new hypernova package
+		return hypernova.NewHypernovaObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
 }
+
+
 
