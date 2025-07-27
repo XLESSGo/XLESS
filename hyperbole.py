@@ -9,27 +9,30 @@ import subprocess
 import datetime
 import shutil
 
-# Hyperbole is the official build script for Hysteria.
+# Hyperbole is the official build script for XLESS.
 # Available environment variables for controlling the build:
-#   - HY_APP_VERSION: App version
-#   - HY_APP_COMMIT: App commit hash
-#   - HY_APP_PLATFORMS: Platforms to build for (e.g. "windows/amd64,linux/arm")
+#   - XL_APP_VERSION: App version
+#   - XL_APP_COMMIT: App commit hash
+#   - XL_APP_PLATFORMS: Platforms to build for (e.g. "windows/amd64,linux/arm")
 
 
 LOGO = """
-░█░█░█░█░█▀█░█▀▀░█▀▄░█▀▄░█▀█░█░░░█▀▀
-░█▀█░░█░░█▀▀░█▀▀░█▀▄░█▀▄░█░█░█░░░█▀▀
-░▀░▀░░▀░░▀░░░▀▀▀░▀░▀░▀▀░░▀▀▀░▀▀▀░▀▀▀
+ __   __  __       __
+|  \ |  ||  |     |  |
+|   \|  ||  |     |  |
+| |\ \  ||  |     |  |
+| | \ \ ||  |____ |  |____
+|_|  \_|||_______||_______|
 """
 
-DESC = "Hyperbole is the official build script for Hysteria."
+DESC = "HyperboleX is the official build script for XLESS."
 
 BUILD_DIR = "build"
 
 CORE_SRC_DIR = "./core"
 EXTRAS_SRC_DIR = "./extras"
 APP_SRC_DIR = "./app"
-APP_SRC_CMD_PKG = "github.com/apernet/hysteria/app/v2/cmd"
+APP_SRC_CMD_PKG = "github.com/XLESSGo/XLESS/app/cmd"
 
 MODULE_SRC_DIRS = [CORE_SRC_DIR, EXTRAS_SRC_DIR, APP_SRC_DIR]
 
@@ -104,7 +107,7 @@ def check_build_env():
 
 
 def get_app_version():
-    app_version = os.environ.get("HY_APP_VERSION")
+    app_version = os.environ.get("XL_APP_VERSION")
     if not app_version:
         try:
             output = (
@@ -137,7 +140,7 @@ def get_app_version_code(str=None):
 
 
 def get_app_commit():
-    app_commit = os.environ.get("HY_APP_COMMIT")
+    app_commit = os.environ.get("XL_APP_COMMIT")
     if not app_commit:
         try:
             app_commit = (
@@ -169,6 +172,7 @@ def get_lib_version():
         with open(CORE_SRC_DIR + "/go.mod") as f:
             for line in f:
                 line = line.strip()
+                # This dependency is not part of the project name change
                 if line.startswith("github.com/apernet/quic-go"):
                     return line.split(" ")[1].strip()
     except Exception:
@@ -176,7 +180,7 @@ def get_lib_version():
 
 
 def get_app_platforms():
-    platforms = os.environ.get("HY_APP_PLATFORMS")
+    platforms = os.environ.get("XL_APP_PLATFORMS")
     if not platforms:
         d_os, d_arch = get_current_os_arch()
         return [(d_os, d_arch)]
@@ -231,7 +235,7 @@ def cmd_build(pprof=False, release=False, race=False):
     for os_name, arch in get_app_platforms():
         print("Building for %s/%s..." % (os_name, arch))
 
-        out_name = "hysteria-%s-%s" % (os_name, arch)
+        out_name = "xless-%s-%s" % (os_name, arch)
         if os_name == "windows":
             out_name += ".exe"
 
@@ -445,14 +449,14 @@ def cmd_publish(urgent=False):
         "code": app_version_code,
         "ver": app_version,
         "chan": "release",
-        "url": "https://github.com/apernet/hysteria/releases",
+        "url": "https://github.com/XLESSGo/XLESS/releases",
         "urgent": urgent,
     }
     headers = {
         "Content-Type": "application/json",
-        "Authorization": os.environ.get("HY_API_POST_KEY"),
+        "Authorization": os.environ.get("XL_API_POST_KEY"),
     }
-    resp = requests.post("https://api.hy2.io/v1/update", json=payload, headers=headers)
+    resp = requests.post("https://api.xl2.io/v1/update", json=payload, headers=headers)
 
     if resp.status_code == 200:
         print("Published %s" % app_version)
