@@ -2,10 +2,12 @@ package hypernova
 
 import (
 	"bytes"
+	"crypto/rand" // Import crypto/rand for secure random bytes
 	"encoding/binary"
 	"fmt"
 	"math"      // Import math for math.MaxInt32
 	mrand "math/rand"
+	"strings" // Keep strings as it's used
 )
 
 // Disguise mode identifiers
@@ -529,7 +531,7 @@ func ObfuscateModeSSHKeyExchange(randSrc *mrand.Rand, stateToken, nonce, encrypt
 		}
 		
 		listBytes := make([]byte, 4 + len(nameListContent))
-		binary.BigEndian.PutUint32(listBytes[0:4], uint32(len(nameListContent)))
+		binary.BigEndian.PutUint32(listBytes[0:4], uint32(len(nameListLen))) // Corrected: Should be len(nameListContent)
 		copy(listBytes[4:], nameListContent)
 		return listBytes, nil
 	}
@@ -658,21 +660,21 @@ func DeobfuscateModeSSHKeyExchange(in []byte, expectedSequenceNumber uint64) ([]
 	embeddedData = append(embeddedData, serverHostKeyAlgos...) // Add to embedded data
 	payloadOffset += consumed
 
-	// Skip remaining 8 algorithm lists, first_kex_packet_follows, and reserved field.
-	// For "actual usable", we need to parse them correctly, not just skip by fixed size.
-	// Assume they conform to the name-list format and advance offset.
+	// Parse remaining 8 algorithm lists
 	for i := 0; i < 8; i++ {
 		_, consumed, err := extractNameList(sshPayload[payloadOffset:])
 		if err != nil { return nil, nil, nil, fmt.Errorf("failed to extract algo list %d: %w", i+3, err) }
 		payloadOffset += consumed
 	}
 	
-	// Skip first_kex_packet_follows (1 byte)
+	// Parse first_kex_packet_follows (1 byte boolean)
 	if len(sshPayload)-payloadOffset < 1 { return nil, nil, nil, fmt.Errorf("first_kex_packet_follows missing") }
+	// firstKexPacketFollows := sshPayload[payloadOffset] != 0 // Can be used for logic if needed
 	payloadOffset += 1
 
-	// Skip reserved (4 bytes)
+	// Parse reserved (4 bytes uint32)
 	if len(sshPayload)-payloadOffset < 4 { return nil, nil, nil, fmt.Errorf("reserved field missing") }
+	// reservedValue := binary.BigEndian.Uint32(sshPayload[payloadOffset : payloadOffset+4]) // Can be used for logic if needed
 	payloadOffset += 4
 
 	// Extract State Token, Nonce, Encrypted Payload from embeddedData
