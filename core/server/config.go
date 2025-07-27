@@ -35,6 +35,7 @@ type Config struct {
 	EventLogger           EventLogger
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
+	DecoyURL              string
 }
 
 // fill fills the fields that are not set by the user with default values when possible,
