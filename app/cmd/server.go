@@ -25,7 +25,7 @@ import (
 	"github.com/mholt/acmez/acme"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	protean "github.com/ban6cat6/protean"
+	protean "github.com/XLESSGo/protean"
 	"go.uber.org/zap"
 
 	"github.com/XLESSGo/XLESS/app/internal/utils"
