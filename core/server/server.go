@@ -55,7 +55,21 @@ func NewServer(config *Config) (Server, error) {
 		EnableDatagrams:                true,
 		DisablePathManager:             true,
 	}
-	listener, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
+	var listener *quic.Listener
+	var err error
+
+	if config.EnableUQUIC {
+		// ---- 使用 uquic ----
+		quicSpec, errSpec := quic.QUICID2Spec(config.UQUICSpecID)
+		if errSpec != nil {
+			_ = config.Conn.Close()
+			return nil, errSpec
+		}
+		listener, err = quic.ListenUQUIC(config.Conn, tlsConfig, quicConfig, &quicSpec)
+	} else {
+		// ---- 普通 quic-go ----
+		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
+	}
 	if err != nil {
 		_ = config.Conn.Close()
 		return nil, err
