@@ -76,7 +76,7 @@ obfs:
   password: your_obfs_password
 
 tls:
-  cert: fullchain.pem  # Optional
+  cert: fullchain.pem  # Optional, use your own or use protean to generate server cert according to DecoyURL
   key: privkey.pem
 
 quic:
