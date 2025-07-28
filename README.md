@@ -10,7 +10,7 @@ XLESS is a modern, highly obfuscated, and extremely secure proxy forwarding tool
   - **Intelligent UDP/BBR/Bandwidth Detection**: Features smart congestion control and supports various transmission optimizations.
   - **Multiple Protocol Ingress**: Supports SOCKS5, HTTP, TUN, and TCP/UDP transparent proxy modes.
   - **Flexible ACLs, Egress Links, and Real-time Traffic Statistics**: Provides comprehensive control and monitoring.
-  - **Customizable Parameters**: Allows for custom obfuscation, passwords, certificates, decoy sites, and more.
+  - **Customizable Parameters**: Allows for custom obfuscation, passwords, certificates, decoy sites, uQUIC, and more.
 
 -----
 
