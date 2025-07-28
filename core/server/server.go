@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
+	utls "github.com/refraction-networking/utls"
 	"encoding/json"
 	"io"
 	"math/rand"
@@ -40,10 +40,10 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
+	tlsConfig := &utls.Config{
 		Certificates:   config.TLSConfig.Certificates,
 		GetCertificate: config.TLSConfig.GetCertificate,
-	})
+	}
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
@@ -59,15 +59,13 @@ func NewServer(config *Config) (Server, error) {
 	var err error
 
 	if config.EnableUQUIC {
-		// ---- 使用 uquic ----
 		quicSpec, errSpec := quic.QUICID2Spec(config.UQUICSpecID)
 		if errSpec != nil {
 			_ = config.Conn.Close()
 			return nil, errSpec
 		}
-		listener, err = quic.ListenUQUIC(config.Conn, tlsConfig, quicConfig, &quicSpec)
+		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig, &quicSpec)
 	} else {
-		// ---- 普通 quic-go ----
 		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
 	}
 	if err != nil {
