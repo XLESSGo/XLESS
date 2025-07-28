@@ -95,25 +95,21 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	var rt http.RoundTripper
 
 	if c.config.EnableUQUIC {
-		// Get the QUIC specification for client fingerprinting.
 		quicSpec, err := quic.QUICID2Spec(c.config.UQUICSpecID)
 		if err != nil {
 			_ = pktConn.Close()
 			return nil, coreErrs.ConnectError{Err: err}
 		}
 
-		// Create a uQUIC-enabled RoundTripper.
 		uquicRT := &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
 			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				// Ensure pktConn is a net.PacketConn for QUIC dialing.
 				udpConn, ok := pktConn.(net.PacketConn)
 				if !ok {
 					return nil, errors.New("pktConn is not a net.PacketConn, cannot use for QUIC Dial")
 				}
 
-				// Create a uQUIC transport with the specified QUIC fingerprint.
 				ut := &quic.UTransport{
 					Transport: &quic.Transport{
 						Conn: udpConn,
@@ -121,46 +117,41 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 					QUICSpec: &quicSpec,
 				}
 
-				// Resolve the UDP address for dialing.
-				udpAddr, err := net.ResolveUDPAddr(udpConn.LocalAddr().Network(), c.config.ServerAddr)
+				udpAddr, err := net.ResolveUDPAddr(udpConn.LocalAddr().Network(), c.config.ServerAddr.String())
 				if err != nil {
 					return nil, err
 				}
 
-				// Dial the early QUIC connection using the uQUIC transport.
 				qc, err := ut.DialEarly(ctx, udpAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
 				}
-				conn = qc // Store the established QUIC connection
+				conn = qc
 				return qc, nil
 			},
 		}
-		rt = uquicRT // Assign the uQUIC RoundTripper
+		rt = uquicRT
 	} else {
-		// Create a standard HTTP/3 RoundTripper for non-uQUIC connections.
 		rt = &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
 			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				// Dial the early QUIC connection using the standard QUIC dialer.
+				// quic.DialEarly directly accepts net.Addr for remoteAddr.
 				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
 				}
-				conn = qc // Store the established QUIC connection
+				conn = qc
 				return qc, nil
 			},
 		}
 	}
 
-	// Prepare and send an auxiliary HTTP/3 request for authentication.
 	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
-	resources, _ := SimulateWebBrowse(httpClient, decoyURL) // Simulate web Browse for traffic obfuscation.
-	sendAuxiliaryRequests(httpClient, resources)             // Send additional requests if any.
+	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
+	sendAuxiliaryRequests(httpClient, resources)
 
-	// Generate a random API path and query for the authentication request.
 	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
@@ -173,7 +164,6 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		Header: make(http.Header),
 	}
 
-	// Build obfuscated authentication headers and body.
 	headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
 	for k, v := range headers {
 		req.Header[k] = v
@@ -182,13 +172,10 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", contentType)
 
-	// Introduce a random delay before sending the request.
 	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
 
-	// Send the authentication request using the configured RoundTripper.
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
-		// Close the QUIC connection and packet connection on error.
 		if conn != nil {
 			_ = conn.CloseWithError(closeErrCodeProtocolError, "")
 		}
@@ -196,43 +183,36 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		return nil, coreErrs.ConnectError{Err: err}
 	}
 
-	// Check the authentication response status code.
 	if resp.StatusCode != protocol.StatusAuthOK {
-		// Close connections and return authentication error if not OK.
 		_ = conn.CloseWithError(closeErrCodeProtocolError, "")
 		_ = pktConn.Close()
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
 
-	// Parse authentication response headers.
 	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
 
-	// Configure congestion control based on server response.
 	if authResp.RxAuto {
-		congestion.UseBBR(conn) // Use BBR if automatic rate control is enabled.
+		congestion.UseBBR(conn)
 	} else {
 		actualTx = authResp.Rx
-		// Cap actualTx to MaxTx if provided or invalid.
 		if actualTx == 0 || actualTx > c.config.BandwidthConfig.MaxTx {
 			actualTx = c.config.BandwidthConfig.MaxTx
 		}
 		if actualTx > 0 {
-			congestion.UseBrutal(conn, actualTx) // Use Brutal congestion control with a fixed rate.
+			congestion.UseBrutal(conn, actualTx)
 		} else {
-			congestion.UseBBR(conn) // Default to BBR if actualTx is zero.
+			congestion.UseBBR(conn)
 		}
 	}
-	_ = resp.Body.Close() // Close the response body.
+	_ = resp.Body.Close()
 
-	// Store the established connections and configure UDP session manager if enabled.
 	c.pktConn = pktConn
 	c.conn = conn
 	if authResp.UDPEnabled {
 		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn})
 	}
 
-	// Return handshake information.
 	return &HandshakeInfo{
 		UDPEnabled: authResp.UDPEnabled,
 		Tx:         actualTx,
