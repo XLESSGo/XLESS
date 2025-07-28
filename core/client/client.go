@@ -67,12 +67,11 @@ type clientImpl struct {
 }
 
 func (c *clientImpl) connect() (*HandshakeInfo, error) {
-	// 1. Establish lower-level QUIC connection
 	pktConn, err := c.config.ConnFactory.New(c.config.ServerAddr)
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tls.Config{
+	tlsConfig := &utls.Config{
 		ServerName:            c.config.TLSConfig.ServerName,
 		InsecureSkipVerify:    c.config.TLSConfig.InsecureSkipVerify,
 		VerifyPeerCertificate: c.config.TLSConfig.VerifyPeerCertificate,
@@ -93,18 +92,15 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	var rt http.RoundTripper
 
 	if c.config.EnableUQUIC {
-		// ---- 使用 uquic ----
-		// 1. 获取 Spec
 		quicSpec, err := quic.QUICID2Spec(c.config.UQUICSpecID)
 		if err != nil {
 			_ = pktConn.Close()
 			return nil, coreErrs.ConnectError{Err: err}
 		}
-		// 2. 创建 roundTripper
 		uquicRT := &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
-			Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
@@ -115,11 +111,10 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		}
 		rt = http3.GetURoundTripper(uquicRT, &quicSpec, nil, nil)
 	} else {
-		// ---- 普通 quic-go ----
 		rt = &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
-			Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
@@ -129,20 +124,11 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 			},
 		}
 	}
-
-	// 2. Simulate browsing the decoy site (request /index.html, extract and request 2-4 linked resources in order)
-	decoyURL := c.config.DecoyURL // Should be provided in Config and match the real decoy base URL.
+	// 后续逻辑全部不动
+	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
-
-	// 2.1 Simulate browsing by requesting /index.html and extracting linked resources.
 	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
-
-	// 2.2 According to spec, before authentication, pick 2-4 linked resources (or all, if not enough),
-	// and request them in order, each with a random delay.
 	sendAuxiliaryRequests(httpClient, resources)
-	// If there are no linked resources, proceed to authentication immediately.
-
-	// 3. Build the obfuscated authentication request (random API path/params/headers/body)
 	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
@@ -161,11 +147,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	req.Body = io.NopCloser(strings.NewReader(string(body)))
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", contentType)
-
-	// 4. Insert a random delay after simulated browsing, before sending authentication request
 	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
-
-	// 5. Send authentication request over the QUIC/HTTP3 connection
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		if conn != nil {
@@ -179,7 +161,6 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		_ = pktConn.Close()
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
-	// 6. Authentication successful, extract response and setup congestion control
 	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
 	if authResp.RxAuto {
