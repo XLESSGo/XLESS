@@ -2,13 +2,12 @@ package cosmicdust
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"math"
 	mrand "math/rand"
 	"strconv"
+	"strings"
 	"time" // Used for NTP timestamp generation
 )
 
@@ -172,6 +171,9 @@ func DeobfuscateModeTLSAppData(in []byte) ([]byte, []byte, []byte, error) {
 	encryptedSegmentPayload := finalEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
 	
 	// Any data after encryptedSegmentPayload is considered padding and ignored.
+	if len(encryptedSegmentPayload) < TagLen {
+		return nil, nil, nil, fmt.Errorf("encrypted segment payload too short for tag")
+	}
 
 	return segmentStateToken, nonce, encryptedSegmentPayload, nil
 }
