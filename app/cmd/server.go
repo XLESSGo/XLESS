@@ -306,7 +306,7 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
         }
 
         // Generate mimic TLS certificate using protean for decoyHost
-        cert, err := protean.MimicTLSCertificate([]string{decoyHost})
+        cert, err := protean.MimicTLSCertificate([]string{decoyHost}, 365)
         if err != nil {
             return configError{Field: "tls", Err: fmt.Errorf("failed to generate mimic certificate: %w", err)}
         }
