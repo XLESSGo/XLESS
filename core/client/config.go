@@ -1,12 +1,13 @@
 package client
 
 import (
-	"crypto/x509"
+	"github.com/refraction-networking/utls"
 	"net"
 	"time"
 
 	"github.com/XLESSGo/XLESS/core/errors"
 	"github.com/XLESSGo/XLESS/core/internal/pmtud"
+	"github.com/XLESSGo/uquic"
 )
 
 const (
@@ -26,14 +27,12 @@ type Config struct {
 	FastOpen        bool
 	DecoyURL        string
 
-	EnableUQUIC     bool           // 新增：是否启用uquic
-	UQUICSpecID     int            // 新增：uquic使用的SpecID（如uquic.Chrome_116等），不启用可为0
+	EnableUQUIC     bool
+	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
 
 	filled bool // whether the fields have been verified and filled
 }
 
-// verifyAndFill fills the fields that are not set by the user with default values when possible,
-// and returns an error if the user has not set a required field or has set an invalid value.
 func (c *Config) verifyAndFill() error {
 	if c.filled {
 		return nil
@@ -76,7 +75,6 @@ func (c *Config) verifyAndFill() error {
 	}
 	c.QUICConfig.DisablePathMTUDiscovery = c.QUICConfig.DisablePathMTUDiscovery || pmtud.DisablePathMTUDiscovery
 
-	// 校验uquic参数（如启用则必须指定SpecID，可以加提示）
 	if c.EnableUQUIC && c.UQUICSpecID == 0 {
 		return errors.ConfigError{Field: "UQUICSpecID", Reason: "must be set if EnableUQUIC"}
 	}
@@ -99,8 +97,8 @@ func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
 type TLSConfig struct {
 	ServerName            string
 	InsecureSkipVerify    bool
-	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
-	RootCAs               *x509.CertPool
+	VerifyPeerCertificate utls.VerifyPeerCertificateFunc
+	RootCAs               *utls.CertPool
 }
 
 // QUICConfig contains the QUIC configuration fields that we want to expose to the user.
@@ -111,7 +109,7 @@ type QUICConfig struct {
 	MaxConnectionReceiveWindow     uint64
 	MaxIdleTimeout                 time.Duration
 	KeepAlivePeriod                time.Duration
-	DisablePathMTUDiscovery        bool // The server may still override this to true on unsupported platforms.
+	DisablePathMTUDiscovery        bool
 }
 
 // BandwidthConfig describes the maximum bandwidth that the server can use, in bytes per second.
