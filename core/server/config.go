@@ -36,6 +36,9 @@ type Config struct {
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
 	DecoyURL              string
+
+	EnableUQUIC           bool         // 新增：是否启用uquic
+	UQUICSpecID           int          // 新增：uquic使用的SpecID
 }
 
 // fill fills the fields that are not set by the user with default values when possible,
