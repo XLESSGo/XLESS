@@ -5,6 +5,7 @@ import (
 
 	cosmos "github.com/XLESSGo/XLESS/extras/obfs/cosmos"
 	hypernova "github.com/XLESSGo/XLESS/extras/obfs/hypernova"
+	cosmicdust "github.com/XLESSGo/XLESS/extras/obfs/cosmicdust"
 )
 
 // Obfuscator is the interface that wraps the Obfuscate and Deobfuscate methods.
@@ -60,6 +61,9 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 	case "hypernova":
 		// Use the NewHypernovaObfuscator from the new hypernova package
 		return hypernova.NewHypernovaObfuscator([]byte(cfg.Password))
+	case "cosmicdust":
+		// Use the NewCosmicDustObfuscator from the new hypernova package
+		return cosmicdust.NewCosmicDustObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
