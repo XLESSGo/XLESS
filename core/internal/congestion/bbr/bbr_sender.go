@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/apernet/quic-go/congestion"
+	"github.com/XLESSGo/uquic/congestion"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion/common"
 )

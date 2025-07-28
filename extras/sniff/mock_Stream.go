@@ -5,7 +5,7 @@ package sniff
 import (
 	context "context"
 
-	qerr "github.com/apernet/quic-go"
+	qerr "github.com/XLESSGo/uquic"
 	mock "github.com/stretchr/testify/mock"
 
 	time "time"

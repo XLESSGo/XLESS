@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/apernet/quic-go"
+	"github.com/XLESSGo/uquic"
 
 	coreErrs "github.com/XLESSGo/XLESS/core/errors"
 	"github.com/XLESSGo/XLESS/core/internal/frag"

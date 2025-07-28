@@ -17,8 +17,8 @@ import (
 	"github.com/XLESSGo/XLESS/core/internal/protocol"
 	"github.com/XLESSGo/XLESS/core/internal/utils"
 
-	"github.com/apernet/quic-go"
-	"github.com/apernet/quic-go/http3"
+	"github.com/XLESSGo/uquic"
+	"github.com/XLESSGo/uquic/http3"
 )
 
 const (

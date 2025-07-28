@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/XLESSGo/XLESS/core/server"
-	"github.com/apernet/quic-go"
+	"github.com/XLESSGo/uquic"
 )
 
 const (

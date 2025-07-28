@@ -8,7 +8,7 @@ import (
 
 	"github.com/XLESSGo/XLESS/core/errors"
 
-	"github.com/apernet/quic-go/quicvarint"
+	"github.com/XLESSGo/uquic/quicvarint"
 )
 
 const (

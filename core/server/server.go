@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apernet/quic-go"
-	"github.com/apernet/quic-go/http3"
+	"github.com/XLESSGo/uquic"
+	"github.com/XLESSGo/uquic/http3"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
 	"github.com/XLESSGo/XLESS/core/internal/protocol"

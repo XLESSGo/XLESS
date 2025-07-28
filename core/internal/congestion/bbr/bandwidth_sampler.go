@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/apernet/quic-go/congestion"
+	"github.com/XLESSGo/uquic/congestion"
 )
 
 const (
