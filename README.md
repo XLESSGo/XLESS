@@ -76,7 +76,7 @@ obfs:
   password: your_obfs_password
 
 tls:
-  cert: fullchain.pem
+  cert: fullchain.pem  # Optional
   key: privkey.pem
 
 quic:
