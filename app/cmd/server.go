@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"context"
-	tls "github.com/refraction-networking/utls"
+	"crypto/tls" // Import standard crypto/tls
+	utls "github.com/refraction-networking/utls" // Import utls with alias
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ import (
 	"github.com/libdns/godaddy"
 	"github.com/libdns/namedotcom"
 	"github.com/libdns/vultr"
-	"github.com/mholt/acmez/acme"
+	acme "github.com/mholt/acmez/v2/acme" // Correctly import acmez/v2/acme
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
@@ -286,216 +287,253 @@ func (c *serverConfig) fillConn(hyConfig *server.Config) error {
 }
 
 func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
-    // If both TLS and ACME are unset, fallback to protean mimic cert
-    if c.TLS == nil && c.ACME == nil {
-        // Extract decoy host from DecoyURL
-        decoyURL := c.DecoyURL
-        decoyHost := ""
-        if decoyURL != "" {
-            u, err := url.Parse(decoyURL)
-            if err == nil && u.Host != "" {
-                decoyHost = u.Host
-            }
-        }
-        if decoyHost == "" {
-            return configError{Field: "decoyURL", Err: errors.New("cannot generate mimic cert: missing or invalid decoyURL")}
-        }
-        // Remove port if present
-        if colon := strings.Index(decoyHost, ":"); colon != -1 {
-            decoyHost = decoyHost[:colon]
-        }
+	// If both TLS and ACME are unset, fallback to protean mimic cert
+	if c.TLS == nil && c.ACME == nil {
+		// Extract decoy host from DecoyURL
+		decoyURL := c.DecoyURL
+		decoyHost := ""
+		if decoyURL != "" {
+			u, err := url.Parse(decoyURL)
+			if err == nil && u.Host != "" {
+				decoyHost = u.Host
+			}
+		}
+		if decoyHost == "" {
+			return configError{Field: "decoyURL", Err: errors.New("cannot generate mimic cert: missing or invalid decoyURL")}
+		}
+		// Remove port if present
+		if colon := strings.Index(decoyHost, ":"); colon != -1 {
+			decoyHost = decoyHost[:colon]
+		}
 
-        // Generate mimic TLS certificate using protean for decoyHost
-        cert, err := protean.MimicTLSCertificate([]string{decoyHost}, 365)
-        if err != nil {
-            return configError{Field: "tls", Err: fmt.Errorf("failed to generate mimic certificate: %w", err)}
-        }
+		// Generate mimic TLS certificate using protean for decoyHost
+		// protean.MimicTLSCertificate returns crypto/tls.Certificate
+		stdCert, err := protean.MimicTLSCertificate([]string{decoyHost}, 365)
+		if err != nil {
+			return configError{Field: "tls", Err: fmt.Errorf("failed to generate mimic certificate: %w", err)}
+		}
 
-        // Assign to TLSConfig
-        hyConfig.TLSConfig.Certificates = []tls.Certificate{*cert}
-        hyConfig.TLSConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-            // Always return the mimic certificate
-            return cert, nil
-        }
-        return nil
-    }
-    // If both are set, error
-    if c.TLS != nil && c.ACME != nil {
-        return configError{Field: "tls", Err: errors.New("cannot set both tls and acme")}
-    }
-    // If TLS is set
-    if c.TLS != nil {
-        // SNI guard
-        var sniGuard utils.SNIGuardFunc
-        switch strings.ToLower(c.TLS.SNIGuard) {
-        case "", "dns-san":
-            sniGuard = utils.SNIGuardDNSSAN
-        case "strict":
-            sniGuard = utils.SNIGuardStrict
-        case "disable":
-            sniGuard = nil
-        default:
-            return configError{Field: "tls.sniGuard", Err: errors.New("unsupported SNI guard")}
-        }
-        // Local TLS cert
-        if c.TLS.Cert == "" || c.TLS.Key == "" {
-            return configError{Field: "tls", Err: errors.New("empty cert or key path")}
-        }
-        certLoader := &utils.LocalCertificateLoader{
-            CertFile: c.TLS.Cert,
-            KeyFile:  c.TLS.Key,
-            SNIGuard: sniGuard,
-        }
-        // Try loading the cert-key pair here to catch errors early
-        // (e.g. invalid files or insufficient permissions)
-        err := certLoader.InitializeCache()
-        if err != nil {
-            var pathErr *os.PathError
-            if errors.As(err, &pathErr) {
-                if pathErr.Path == c.TLS.Cert {
-                    return configError{Field: "tls.cert", Err: pathErr}
-                }
-                if pathErr.Path == c.TLS.Key {
-                    return configError{Field: "tls.key", Err: pathErr}
-                }
-            }
-            return configError{Field: "tls", Err: err}
-        }
-        // Use GetCertificate instead of Certificates so that
-        // users can update the cert without restarting the server.
-        hyConfig.TLSConfig.GetCertificate = certLoader.GetCertificate
-        return nil
-    }
-    // If ACME is set
-    if c.ACME != nil {
-        dataDir := c.ACME.Dir
-        if dataDir == "" {
-            // If not specified in the config, check the environment variable
-            // before resorting to the default "acme" value. The main reason
-            // we have this is so that our setup script can set it to the
-            // user's home directory.
-            dataDir = envOrDefaultString(appACMEDirEnv, "acme")
-        }
-        cmCfg := &certmagic.Config{
-            RenewalWindowRatio: certmagic.DefaultRenewalWindowRatio,
-            KeySource:          certmagic.DefaultKeyGenerator,
-            Storage:            &certmagic.FileStorage{Path: dataDir},
-            Logger:             logger,
-        }
-        cmIssuer := certmagic.NewACMEIssuer(cmCfg, certmagic.ACMEIssuer{
-            Email:      c.ACME.Email,
-            Agreed:     true,
-            ListenHost: c.ACME.ListenHost,
-            Logger:     logger,
-        })
-        switch strings.ToLower(c.ACME.CA) {
-        case "letsencrypt", "le", "":
-            // Default to Let's Encrypt
-            cmIssuer.CA = certmagic.LetsEncryptProductionCA
-        case "zerossl", "zero":
-            cmIssuer.CA = certmagic.ZeroSSLProductionCA
-            eab, err := genZeroSSLEAB(c.ACME.Email)
-            if err != nil {
-                return configError{Field: "acme.ca", Err: err}
-            }
-            cmIssuer.ExternalAccount = eab
-        default:
-            return configError{Field: "acme.ca", Err: errors.New("unsupported CA")}
-        }
+		// Convert crypto/tls.Certificate to utls.Certificate for hyConfig.TLSConfig
+		utlsCert := utls.Certificate(*stdCert)
 
-        switch strings.ToLower(c.ACME.Type) {
-        case "http":
-            cmIssuer.DisableHTTPChallenge = false
-            cmIssuer.DisableTLSALPNChallenge = true
-            cmIssuer.DNS01Solver = nil
-            cmIssuer.AltHTTPPort = c.ACME.HTTP.AltPort
-        case "tls":
-            cmIssuer.DisableHTTPChallenge = true
-            cmIssuer.DisableTLSALPNChallenge = false
-            cmIssuer.DNS01Solver = nil
-            cmIssuer.AltTLSALPNPort = c.ACME.TLS.AltPort
-        case "dns":
-            cmIssuer.DisableHTTPChallenge = true
-            cmIssuer.DisableTLSALPNChallenge = true
-            if c.ACME.DNS.Name == "" {
-                return configError{Field: "acme.dns.name", Err: errors.New("empty DNS provider name")}
-            }
-            if c.ACME.DNS.Config == nil {
-                return configError{Field: "acme.dns.config", Err: errors.New("empty DNS provider config")}
-            }
-            switch strings.ToLower(c.ACME.DNS.Name) {
-            case "cloudflare":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &cloudflare.Provider{
-                        APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
-                    },
-                }
-            case "duckdns":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &duckdns.Provider{
-                        APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
-                        OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
-                    },
-                }
-            case "gandi":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &gandi.Provider{
-                        BearerToken: c.ACME.DNS.Config["gandi_api_token"],
-                    },
-                }
-            case "godaddy":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &godaddy.Provider{
-                        APIToken: c.ACME.DNS.Config["godaddy_api_token"],
-                    },
-                }
-            case "namedotcom":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &namedotcom.Provider{
-                        Token:  c.ACME.DNS.Config["namedotcom_token"],
-                        User:   c.ACME.DNS.Config["namedotcom_user"],
-                        Server: c.ACME.DNS.Config["namedotcom_server"],
-                    },
-                }
-            case "vultr":
-                cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-                    DNSProvider: &vultr.Provider{
-                        APIToken: c.ACME.DNS.Config["vultr_api_token"],
-                    },
-                }
-            default:
-                return configError{Field: "acme.dns.name", Err: errors.New("unsupported DNS provider")}
-            }
-        case "":
-            // Legacy compatibility mode
-            cmIssuer.DisableHTTPChallenge = c.ACME.DisableHTTP
-            cmIssuer.DisableTLSALPNChallenge = c.ACME.DisableTLSALPN
-            cmIssuer.AltHTTPPort = c.ACME.AltHTTPPort
-            cmIssuer.AltTLSALPNPort = c.ACME.AltTLSALPNPort
-        default:
-            return configError{Field: "acme.type", Err: errors.New("unsupported ACME type")}
-        }
+		// Assign to TLSConfig
+		hyConfig.TLSConfig.Certificates = []utls.Certificate{utlsCert}
+		hyConfig.TLSConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
+			// Always return the mimic certificate
+			return &utlsCert, nil // Return address of utlsCert
+		}
+		return nil
+	}
+	// If both are set, error
+	if c.TLS != nil && c.ACME != nil {
+		return configError{Field: "tls", Err: errors.New("cannot set both tls and acme")}
+	}
+	// If TLS is set
+	if c.TLS != nil {
+		// SNI guard
+		var sniGuard utils.SNIGuardFunc
+		switch strings.ToLower(c.TLS.SNIGuard) {
+		case "", "dns-san":
+			sniGuard = utils.SNIGuardDNSSAN
+		case "strict":
+			sniGuard = utils.SNIGuardStrict
+		case "disable":
+			sniGuard = nil
+		default:
+			return configError{Field: "tls.sniGuard", Err: errors.New("unsupported SNI guard")}
+		}
+		// Local TLS cert
+		if c.TLS.Cert == "" || c.TLS.Key == "" {
+			return configError{Field: "tls", Err: errors.New("empty cert or key path")}
+		}
+		certLoader := &utils.LocalCertificateLoader{
+			CertFile: c.TLS.Cert,
+			KeyFile:  c.TLS.Key,
+			SNIGuard: sniGuard,
+		}
+		// Try loading the cert-key pair here to catch errors early
+		// (e.g. invalid files or insufficient permissions)
+		err := certLoader.InitializeCache()
+		if err != nil {
+			var pathErr *os.PathError
+			if errors.As(err, &pathErr) {
+				if pathErr.Path == c.TLS.Cert {
+					return configError{Field: "tls.cert", Err: pathErr}
+				}
+				if pathErr.Path == c.TLS.Key {
+					return configError{Field: "tls.key", Err: pathErr}
+				}
+			}
+			return configError{Field: "tls", Err: err}
+		}
+		// Use GetCertificate instead of Certificates so that
+		// users can update the cert without restarting the server.
+		// LocalCertificateLoader.GetCertificate returns *crypto/tls.Certificate
+		// Need to wrap it to return *utls.Certificate
+		hyConfig.TLSConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
+			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certLoader
+			stdInfo := &tls.ClientHelloInfo{
+				CipherSuites:      info.CipherSuites,
+				ServerName:        info.ServerName,
+				SupportedCurves:   info.SupportedCurves,
+				SupportedPoints:   info.SupportedPoints,
+				SignatureSchemes:  info.SignatureSchemes,
+				SupportedVersions: info.SupportedVersions,
+				Conn:              info.Conn,
+			}
+			stdCert, err := certLoader.GetCertificate(stdInfo)
+			if err != nil {
+				return nil, err
+			}
+			// Convert crypto/tls.Certificate back to utls.Certificate
+			utlsCert := utls.Certificate(*stdCert)
+			return &utlsCert, nil
+		}
+		return nil
+	}
+	// If ACME is set
+	if c.ACME != nil {
+		dataDir := c.ACME.Dir
+		if dataDir == "" {
+			dataDir = envOrDefaultString(appACMEDirEnv, "acme")
+		}
+		cmCfg := &certmagic.Config{
+			RenewalWindowRatio: certmagic.DefaultRenewalWindowRatio,
+			KeySource:          certmagic.DefaultKeyGenerator,
+			Storage:            &certmagic.FileStorage{Path: dataDir},
+			Logger:             logger,
+		}
+		cmIssuer := certmagic.NewACMEIssuer(cmCfg, certmagic.ACMEIssuer{
+			Email:      c.ACME.Email,
+			Agreed:     true,
+			ListenHost: c.ACME.ListenHost,
+			Logger:     logger,
+		})
+		switch strings.ToLower(c.ACME.CA) {
+		case "letsencrypt", "le", "":
+			cmIssuer.CA = certmagic.LetsEncryptProductionCA
+		case "zerossl", "zero":
+			cmIssuer.CA = certmagic.ZeroSSLProductionCA
+			eab, err := genZeroSSLEAB(c.ACME.Email) // genZeroSSLEAB now returns acme.EAB from v2
+			if err != nil {
+				return configError{Field: "acme.ca", Err: err}
+			}
+			cmIssuer.ExternalAccount = eab // This assignment should now work
+		default:
+			return configError{Field: "acme.ca", Err: errors.New("unsupported CA")}
+		}
 
-        cmCfg.Issuers = []certmagic.Issuer{cmIssuer}
-        cmCache := certmagic.NewCache(certmagic.CacheOptions{
-            GetConfigForCert: func(cert certmagic.Certificate) (*certmagic.Config, error) {
-                return cmCfg, nil
-            },
-            Logger: logger,
-        })
-        cmCfg = certmagic.New(cmCache, *cmCfg)
+		switch strings.ToLower(c.ACME.Type) {
+		case "http":
+			cmIssuer.DisableHTTPChallenge = false
+			cmIssuer.DisableTLSALPNChallenge = true
+			cmIssuer.DNS01Solver = nil
+			cmIssuer.AltHTTPPort = c.ACME.HTTP.AltPort
+		case "tls":
+			cmIssuer.DisableHTTPChallenge = true
+			cmIssuer.DisableTLSALPNChallenge = false
+			cmIssuer.DNS01Solver = nil
+			cmIssuer.AltTLSALPNPort = c.ACME.TLS.AltPort
+		case "dns":
+			cmIssuer.DisableHTTPChallenge = true
+			cmIssuer.DisableTLSALPNChallenge = true
+			if c.ACME.DNS.Name == "" {
+				return configError{Field: "acme.dns.name", Err: errors.New("empty DNS provider name")}
+			}
+			if c.ACME.DNS.Config == nil {
+				return configError{Field: "acme.dns.config", Err: errors.New("empty DNS provider config")}
+			}
+			switch strings.ToLower(c.ACME.DNS.Name) {
+			case "cloudflare":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &cloudflare.Provider{ // Changed DNSProvider to Solver
+						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
+					},
+				}
+			case "duckdns":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &duckdns.Provider{ // Changed DNSProvider to Solver
+						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
+						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
+					},
+				}
+			case "gandi":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &gandi.Provider{ // Changed DNSProvider to Solver
+						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
+					},
+				}
+			case "godaddy":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &godaddy.Provider{ // Changed DNSProvider to Solver
+						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
+					},
+				}
+			case "namedotcom":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &namedotcom.Provider{ // Changed DNSProvider to Solver
+						Token:  c.ACME.DNS.Config["namedotcom_token"],
+						User:   c.ACME.DNS.Config["namedotcom_user"],
+						Server: c.ACME.DNS.Config["namedotcom_server"],
+					},
+				}
+			case "vultr":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					Solver: &vultr.Provider{ // Changed DNSProvider to Solver
+						APIToken: c.ACME.DNS.Config["vultr_api_token"],
+					},
+				}
+			default:
+				return configError{Field: "acme.dns.name", Err: errors.New("unsupported DNS provider")}
+			}
+		case "":
+			// Legacy compatibility mode
+			cmIssuer.DisableHTTPChallenge = c.ACME.DisableHTTP
+			cmIssuer.DisableTLSALPNChallenge = c.ACME.DisableTLSALPN
+			cmIssuer.AltHTTPPort = c.ACME.AltHTTPPort
+			cmIssuer.AltTLSALPNPort = c.ACME.AltTLSALPNPort
+		default:
+			return configError{Field: "acme.type", Err: errors.New("unsupported ACME type")}
+		}
 
-        if len(c.ACME.Domains) == 0 {
-            return configError{Field: "acme.domains", Err: errors.New("empty domains")}
-        }
-        err := cmCfg.ManageSync(context.Background(), c.ACME.Domains)
-        if err != nil {
-            return configError{Field: "acme.domains", Err: err}
-        }
-        hyConfig.TLSConfig.GetCertificate = cmCfg.GetCertificate
-        return nil
-    }
-    return nil
+		cmCfg.Issuers = []certmagic.Issuer{cmIssuer}
+		cmCache := certmagic.NewCache(certmagic.CacheOptions{
+			GetConfigForCert: func(cert certmagic.Certificate) (*certmagic.Config, error) {
+				return cmCfg, nil
+			},
+			Logger: logger,
+		})
+		cmCfg = certmagic.New(cmCache, *cmCfg)
+
+		if len(c.ACME.Domains) == 0 {
+			return configError{Field: "acme.domains", Err: errors.New("empty domains")}
+		}
+		err := cmCfg.ManageSync(context.Background(), c.ACME.Domains)
+		if err != nil {
+			return configError{Field: "acme.domains", Err: err}
+		}
+		// certmagic.GetCertificate returns *crypto/tls.Certificate
+		// Need to wrap it to return *utls.Certificate
+		hyConfig.TLSConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
+			stdInfo := &tls.ClientHelloInfo{ // Use standard tls here
+				CipherSuites:      info.CipherSuites,
+				ServerName:        info.ServerName,
+				SupportedCurves:   info.SupportedCurves,
+				SupportedPoints:   info.SupportedPoints,
+				SignatureSchemes:  info.SignatureSchemes,
+				SupportedVersions: info.SupportedVersions,
+				Conn:              info.Conn,
+			}
+			stdCert, err := cmCfg.GetCertificate(stdInfo)
+			if err != nil {
+				return nil, err
+			}
+			utlsCert := utls.Certificate(*stdCert) // Convert
+			return &utlsCert, nil
+		}
+		return nil
+	}
+	return nil
 }
 
 func (c *serverConfig) fillDecoyURL(hyConfig *server.Config) error {
@@ -506,14 +544,14 @@ func (c *serverConfig) fillDecoyURL(hyConfig *server.Config) error {
     return nil
 }
 
-func genZeroSSLEAB(email string) (*acme.EAB, error) {
+func genZeroSSLEAB(email string) (*acme.EAB, error) { // Return type changed to *acme.EAB from v2
 	req, err := http.NewRequest(
 		http.MethodPost,
 		"https://api.zerossl.com/acme/eab-credentials-email",
 		strings.NewReader(url.Values{"email": []string{email}}.Encode()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to creare ZeroSSL EAB request: %w", err)
+		return nil, fmt.Errorf("failed to create ZeroSSL EAB request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", certmagic.UserAgent)
@@ -542,7 +580,7 @@ func genZeroSSLEAB(email string) (*acme.EAB, error) {
 		return nil, fmt.Errorf("failed getting EAB credentials: HTTP %d", resp.StatusCode)
 	}
 
-	return &acme.EAB{
+	return &acme.EAB{ // Use acme.EAB from v2
 		KeyID:  result.EABKID,
 		MACKey: result.EABHMACKey,
 	}, nil
