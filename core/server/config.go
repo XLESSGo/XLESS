@@ -1,8 +1,7 @@
 package server
 
 import (
-	"github.com/refraction-networking/utls"
-	"crypto/tls"
+	utls "github.com/refraction-networking/utls"
 	"net"
 	"net/http"
 	"sync/atomic"
