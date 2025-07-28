@@ -2,12 +2,13 @@ package cosmicdust
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/hmac"
 	"encoding/binary"
 	"fmt"
 	"math"
 	mrand "math/rand"
 	"strconv"
-	"strings"
 	"time" // Used for NTP timestamp generation
 )
 
