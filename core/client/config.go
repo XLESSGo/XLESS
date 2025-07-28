@@ -98,7 +98,7 @@ type TLSConfig struct {
 	ServerName            string
 	InsecureSkipVerify    bool
 	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
-	RootCAs               *utls.CertPool
+	RootCAs               *x509.CertPool
 }
 
 // QUICConfig contains the QUIC configuration fields that we want to expose to the user.
