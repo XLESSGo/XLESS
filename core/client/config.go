@@ -97,7 +97,7 @@ func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
 type TLSConfig struct {
 	ServerName            string
 	InsecureSkipVerify    bool
-	VerifyPeerCertificate utls.VerifyPeerCertificateFunc
+	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 	RootCAs               *utls.CertPool
 }
 
