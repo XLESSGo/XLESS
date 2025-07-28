@@ -40,6 +40,8 @@ const (
 )
 
 // Obfuscator is the interface that wraps the Obfuscate and Deobfuscate methods.
+// It defines the contract for any CosmicDust obfuscator implementation.
+// Its method signatures are designed to be compatible with the top-level obfs.Obfuscator interface.
 type Obfuscator interface {
 	// Obfuscate takes original plaintext and returns multiple obfuscated physical packets.
 	// The caller is responsible for sending these packets over the network.
@@ -50,6 +52,10 @@ type Obfuscator interface {
 	// The 'out' buffer is used to write the reassembled plaintext.
 	Deobfuscate(in []byte, out []byte) (int, error)
 }
+
+// Ensure CosmicDustObfuscator implements its own package's Obfuscator interface.
+// This compile-time check helps ensure method signatures are correct.
+var _ Obfuscator = (*CosmicDustObfuscator)(nil)
 
 // CosmicDustObfuscator implements a highly complex, stateful obfuscation protocol.
 // It uses multi-layered polymorphism, a history-dependent state machine,
@@ -253,7 +259,6 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		}
 
 		if err == nil { // Successfully parsed a mode
-			// parsedMode = mode // Removed unused variable
 			foundMatch = true
 			break
 		}
@@ -361,6 +366,3 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 	// Not all segments received yet
 	return 0, nil
 }
-
-// Ensure CosmicDustObfuscator implements Obfuscator interface
-var _ Obfuscator = (*CosmicDustObfuscator)(nil)
