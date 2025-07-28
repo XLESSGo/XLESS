@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"crypto/tls"
+	utls "github.com/refraction-networking/utls"
 	"errors"
 	"net"
 	"net/http"
