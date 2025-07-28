@@ -1,7 +1,7 @@
 package client
 
 import (
-	utls "github.com/refraction-networking/utls"
+	"crypto/x509"
 	"net"
 	"time"
 
