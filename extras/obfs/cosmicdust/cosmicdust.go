@@ -48,9 +48,9 @@ type Obfuscator interface {
 	Obfuscate(in []byte) ([][]byte, error)
 	// Deobfuscate takes a single received physical packet.
 	// It returns the length of the reassembled original plaintext if a full packet is ready,
-	// otherwise 0. An error indicates a parsing or verification failure.
+	// otherwise 0. An error indicates a parsing or verification failure, in which case 0 is returned.
 	// The 'out' buffer is used to write the reassembled plaintext.
-	Deobfuscate(in []byte, out []byte) (int, error)
+	Deobfuscate(in []byte, out []byte) int // Changed return type to int only
 }
 
 // Ensure CosmicDustObfuscator implements its own package's Obfuscator interface.
@@ -222,7 +222,9 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte) ([][]byte, error) {
 // Deobfuscate processes a single received physical packet.
 // It attempts to identify its disguise, extract the segment, verify it,
 // and reassemble the original payload if all segments for a packet are received.
-func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
+// Returns the length of the reassembled original plaintext if a full packet is ready,
+// otherwise 0. If an error occurs during parsing or verification, 0 is returned.
+func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int { // Changed return type to int only
 	o.lk.Lock()
 	defer o.lk.Unlock()
 
@@ -231,7 +233,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		segmentStateToken       []byte
 		segmentNonce            []byte
 		encryptedSegmentPayload []byte
-		err                     error
+		err                     error // Keep err for internal logging/debugging
 	)
 
 	// Iterate through all modes to find a match
@@ -250,7 +252,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 			isDecoy, decoyErr := DeobfuscateModeDecoy(o.PSK, o.cumulativeStateHash, in)
 			if isDecoy && decoyErr == nil {
 				// This is a legitimate decoy packet, just discard it.
-				return 0, nil // Return 0 length, no error for a valid decoy
+				return 0 // Return 0 length for a valid decoy
 			}
 			// If it's not a decoy, or decoy parsing failed, continue trying other modes
 			continue
@@ -265,52 +267,58 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 	}
 
 	if !foundMatch {
-		return 0, fmt.Errorf("failed to parse incoming packet with any known disguise mode")
+		// fmt.Printf("Deobfuscate: failed to parse incoming packet with any known disguise mode: %v\n", err) // Log internal error
+		return 0
 	}
 
 	// 2. Extract segment metadata from SegmentStateToken
 	packetID, segmentIndex, totalSegments, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
 	if err != nil {
-		return 0, fmt.Errorf("failed to extract segment metadata: %w", err)
+		// fmt.Printf("Deobfuscate: failed to extract segment metadata: %v\n", err)
+		return 0
 	}
 
 	// Important: Check if this packet belongs to the current expected global packet ID
 	if packetID != o.recvPacketID {
-		// This could be an old packet, a replayed packet, or a packet from a desynchronized session.
-		// For a strict protocol, we drop it. For a more robust one, we might buffer a small window
-		// of future packets or attempt resynchronization.
-		return 0, fmt.Errorf("received packet ID %d does not match expected %d", packetID, o.recvPacketID)
+		// fmt.Printf("Deobfuscate: received packet ID %d does not match expected %d\n", packetID, o.recvPacketID)
+		return 0
 	}
 
 	// Verify that the extracted encryptedPayloadLen matches the actual length of encryptedSegmentPayload
 	if encryptedPayloadLen != uint16(len(encryptedSegmentPayload)) {
-		return 0, fmt.Errorf("encrypted payload length mismatch: token says %d, actual %d", encryptedPayloadLen, len(encryptedSegmentPayload))
+		// fmt.Printf("Deobfuscate: encrypted payload length mismatch: token says %d, actual %d\n", encryptedPayloadLen, len(encryptedSegmentPayload))
+		return 0
 	}
 
 	// 3. Verify SegmentStateToken (HMAC)
 	verified, err := VerifySegmentStateToken(o.PSK, packetID, segmentIndex, totalSegments, encryptedPayloadLen, o.cumulativeStateHash, segmentStateToken, encryptedSegmentPayload)
 	if err != nil || !verified {
-		return 0, fmt.Errorf("segment state token verification failed: %w", err)
+		// fmt.Printf("Deobfuscate: segment state token verification failed: %v, verified: %t\n", err, verified)
+		return 0
 	}
 
 	// 4. Derive segment-specific AES key (must match sender's derivation)
 	aesKey, err := DeriveAESKey(o.PSK, packetID, segmentIndex, o.cumulativeStateHash)
 	if err != nil {
-		return 0, fmt.Errorf("failed to derive AES key for decryption: %w", err)
+		// fmt.Printf("Deobfuscate: failed to derive AES key for decryption: %v\n", err)
+		return 0
 	}
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create AES cipher for decryption: %w", err)
+		// fmt.Printf("Deobfuscate: failed to create AES cipher for decryption: %v\n", err)
+		return 0
 	}
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create GCM for decryption: %w", err)
+		// fmt.Printf("Deobfuscate: failed to create GCM for decryption: %v\n", err)
+		return 0
 	}
 
 	// 5. Decrypt segment payload
 	decryptedSegmentPayload, err := aesgcm.Open(nil, segmentNonce, encryptedSegmentPayload, nil)
 	if err != nil {
-		return 0, fmt.Errorf("segment decryption failed: %w", err)
+		// fmt.Printf("Deobfuscate: segment decryption failed: %v\n", err)
+		return 0
 	}
 
 	// 6. Store segment in reassembly buffer
@@ -321,7 +329,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 	}
 	if _, ok := o.recvBuffer[packetID][segmentIndex]; ok {
 		// Duplicate segment received, ignore or handle as needed (e.g., log)
-		return 0, nil
+		return 0
 	}
 	o.recvBuffer[packetID][segmentIndex] = decryptedSegmentPayload
 	o.currentReassembledSize[packetID] += len(decryptedSegmentPayload)
@@ -335,7 +343,8 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 			segment, ok := o.recvBuffer[packetID][i]
 			if !ok {
 				// This should not happen if len(o.recvBuffer[packetID]) == o.expectedTotalSegments[packetID]
-				return 0, fmt.Errorf("missing segment %d during reassembly for packet %d", i, packetID)
+				// fmt.Printf("Deobfuscate: missing segment %d during reassembly for packet %d\n", i, packetID)
+				return 0
 			}
 			copy(reassembledPayload[currentWriteOffset:], segment)
 			currentWriteOffset += len(segment)
@@ -343,14 +352,16 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 
 		// Copy reassembled payload to 'out' buffer
 		if len(out) < len(reassembledPayload) {
-			return 0, fmt.Errorf("output buffer too small for reassembled payload")
+			// fmt.Printf("Deobfuscate: output buffer too small for reassembled payload\n")
+			return 0
 		}
 		copy(out, reassembledPayload)
 
 		// 8. Update global cumulative state hash (based on the reassembled full payload)
 		newCumulativeHash, err := UpdateCumulativeHash(o.PSK, o.cumulativeStateHash, o.recvPacketID, reassembledPayload) // Hash original payload
 		if err != nil {
-			return 0, fmt.Errorf("failed to update cumulative hash on deobfuscate: %w", err)
+			// fmt.Printf("Deobfuscate: failed to update cumulative hash on deobfuscate: %v\n", err)
+			return 0
 		}
 		o.cumulativeStateHash = newCumulativeHash
 
@@ -360,9 +371,9 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) (int, error) {
 		delete(o.expectedTotalSegments, packetID)
 		delete(o.currentReassembledSize, packetID)
 
-		return len(reassembledPayload), nil
+		return len(reassembledPayload)
 	}
 
 	// Not all segments received yet
-	return 0, nil
+	return 0
 }
