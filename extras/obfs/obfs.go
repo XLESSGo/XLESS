@@ -62,7 +62,7 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		// Use the NewHypernovaObfuscator from the new hypernova package
 		return hypernova.NewHypernovaObfuscator([]byte(cfg.Password))
 	case "cosmicdust":
-		// Use the NewCosmicDustObfuscator from the new hypernova package
+		// Use the NewCosmicDustObfuscator from the new cosmicdust package
 		return cosmicdust.NewCosmicDustObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
