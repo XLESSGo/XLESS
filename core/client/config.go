@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/refraction-networking/utls"
+	utls "github.com/refraction-networking/utls"
 	"net"
 	"time"
 
