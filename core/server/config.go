@@ -96,7 +96,7 @@ func (c *Config) fill() error {
 	if c.Authenticator == nil {
 		return errors.ConfigError{Field: "Authenticator", Reason: "must be set"}
 	}
-	if c.EnableUQUIC && c.UQUICSpecID == 0 {
+	if c.EnableUQUIC && c.UQUICSpecID == (quic.QUICID{}) {
 		return errors.ConfigError{Field: "UQUICSpecID", Reason: "must be set if EnableUQUIC"}
 	}
 	return nil

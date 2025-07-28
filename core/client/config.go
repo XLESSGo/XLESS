@@ -1,7 +1,7 @@
 package client
 
 import (
-	utls "github.com/refraction-networking/utls"
+	"crypto/x509"
 	"net"
 	"time"
 
@@ -75,7 +75,7 @@ func (c *Config) verifyAndFill() error {
 	}
 	c.QUICConfig.DisablePathMTUDiscovery = c.QUICConfig.DisablePathMTUDiscovery || pmtud.DisablePathMTUDiscovery
 
-	if c.EnableUQUIC && c.UQUICSpecID == 0 {
+	if c.EnableUQUIC && c.UQUICSpecID == (quic.QUICID{}) {
 		return errors.ConfigError{Field: "UQUICSpecID", Reason: "must be set if EnableUQUIC"}
 	}
 
@@ -97,8 +97,8 @@ func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
 type TLSConfig struct {
 	ServerName            string
 	InsecureSkipVerify    bool
-	VerifyPeerCertificate utls.VerifyPeerCertificateFunc
-	RootCAs               *utls.CertPool
+	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
+	RootCAs               *x509.CertPool
 }
 
 // QUICConfig contains the QUIC configuration fields that we want to expose to the user.

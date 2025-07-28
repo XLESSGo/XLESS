@@ -71,12 +71,14 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	tlsConfig := &utls.Config{
 		ServerName:            c.config.TLSConfig.ServerName,
 		InsecureSkipVerify:    c.config.TLSConfig.InsecureSkipVerify,
 		VerifyPeerCertificate: c.config.TLSConfig.VerifyPeerCertificate,
 		RootCAs:               c.config.TLSConfig.RootCAs,
 	}
+
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     c.config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         c.config.QUICConfig.MaxStreamReceiveWindow,
@@ -88,6 +90,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		EnableDatagrams:                true,
 		DisablePathManager:             true,
 	}
+
 	var conn quic.EarlyConnection
 	var rt http.RoundTripper
 
@@ -97,11 +100,29 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 			_ = pktConn.Close()
 			return nil, coreErrs.ConnectError{Err: err}
 		}
+
 		uquicRT := &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
 			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
+				udpConn, ok := pktConn.(net.PacketConn)
+				if !ok {
+					return nil, errors.New("pktConn is not a net.PacketConn, cannot use for QUIC Dial")
+				}
+
+				ut := &quic.UTransport{
+					Transport: &quic.Transport{
+						Conn: udpConn,
+					},
+					QUICSpec: &quicSpec,
+				}
+
+				udpAddr, err := net.ResolveUDPAddr(udpConn.LocalAddr().Network(), c.config.ServerAddr.String())
+				if err != nil {
+					return nil, err
+				}
+
+				qc, err := ut.DialEarly(ctx, udpAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
 				}
@@ -109,12 +130,13 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 				return qc, nil
 			},
 		}
-		rt = http3.GetURoundTripper(uquicRT, &quicSpec, nil, nil)
+		rt = uquicRT
 	} else {
 		rt = &http3.RoundTripper{
 			TLSClientConfig: tlsConfig,
 			QUICConfig:      quicConfig,
 			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				// quic.DialEarly directly accepts net.Addr for remoteAddr.
 				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
 				if err != nil {
 					return nil, err
@@ -124,11 +146,12 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 			},
 		}
 	}
-	// 后续逻辑全部不动
+
 	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
 	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
 	sendAuxiliaryRequests(httpClient, resources)
+
 	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
@@ -140,6 +163,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		},
 		Header: make(http.Header),
 	}
+
 	headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
 	for k, v := range headers {
 		req.Header[k] = v
@@ -147,7 +171,9 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	req.Body = io.NopCloser(strings.NewReader(string(body)))
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", contentType)
+
 	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
+
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		if conn != nil {
@@ -156,13 +182,16 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		_ = pktConn.Close()
 		return nil, coreErrs.ConnectError{Err: err}
 	}
+
 	if resp.StatusCode != protocol.StatusAuthOK {
 		_ = conn.CloseWithError(closeErrCodeProtocolError, "")
 		_ = pktConn.Close()
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
+
 	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
+
 	if authResp.RxAuto {
 		congestion.UseBBR(conn)
 	} else {
@@ -183,6 +212,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	if authResp.UDPEnabled {
 		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn})
 	}
+
 	return &HandshakeInfo{
 		UDPEnabled: authResp.UDPEnabled,
 		Tx:         actualTx,
