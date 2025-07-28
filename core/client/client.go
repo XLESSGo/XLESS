@@ -90,17 +90,44 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		DisablePathManager:             true,
 	}
 	var conn quic.EarlyConnection
-	rt := &http3.RoundTripper{
-		TLSClientConfig: tlsConfig,
-		QUICConfig:      quicConfig,
-		Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-			qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
-			if err != nil {
-				return nil, err
-			}
-			conn = qc
-			return qc, nil
-		},
+	var rt http.RoundTripper
+
+	if c.config.EnableUQUIC {
+		// ---- 使用 uquic ----
+		// 1. 获取 Spec
+		quicSpec, err := quic.QUICID2Spec(c.config.UQUICSpecID)
+		if err != nil {
+			_ = pktConn.Close()
+			return nil, coreErrs.ConnectError{Err: err}
+		}
+		// 2. 创建 roundTripper
+		uquicRT := &http3.RoundTripper{
+			TLSClientConfig: tlsConfig,
+			QUICConfig:      quicConfig,
+			Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
+				if err != nil {
+					return nil, err
+				}
+				conn = qc
+				return qc, nil
+			},
+		}
+		rt = http3.GetURoundTripper(uquicRT, &quicSpec, nil, nil)
+	} else {
+		// ---- 普通 quic-go ----
+		rt = &http3.RoundTripper{
+			TLSClientConfig: tlsConfig,
+			QUICConfig:      quicConfig,
+			Dial: func(ctx context.Context, _ string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
+				if err != nil {
+					return nil, err
+				}
+				conn = qc
+				return qc, nil
+			},
+		}
 	}
 
 	// 2. Simulate browsing the decoy site (request /index.html, extract and request 2-4 linked resources in order)
