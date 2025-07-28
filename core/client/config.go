@@ -26,6 +26,9 @@ type Config struct {
 	FastOpen        bool
 	DecoyURL        string
 
+	EnableUQUIC     bool           // 新增：是否启用uquic
+	UQUICSpecID     int            // 新增：uquic使用的SpecID（如uquic.Chrome_116等），不启用可为0
+
 	filled bool // whether the fields have been verified and filled
 }
 
@@ -72,6 +75,11 @@ func (c *Config) verifyAndFill() error {
 		return errors.ConfigError{Field: "QUICConfig.KeepAlivePeriod", Reason: "must be between 2s and 60s"}
 	}
 	c.QUICConfig.DisablePathMTUDiscovery = c.QUICConfig.DisablePathMTUDiscovery || pmtud.DisablePathMTUDiscovery
+
+	// 校验uquic参数（如启用则必须指定SpecID，可以加提示）
+	if c.EnableUQUIC && c.UQUICSpecID == 0 {
+		return errors.ConfigError{Field: "UQUICSpecID", Reason: "must be set if EnableUQUIC"}
+	}
 
 	c.filled = true
 	return nil
