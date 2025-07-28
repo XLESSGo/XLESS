@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apernet/quic-go"
+	"github.com/XLESSGo/uquic"
 	utls "github.com/refraction-networking/utls"
 
 	"github.com/XLESSGo/XLESS/core/server"

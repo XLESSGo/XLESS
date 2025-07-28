@@ -8,7 +8,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/apernet/quic-go/quicvarint"
+	"github.com/XLESSGo/uquic/quicvarint"
 	"golang.org/x/crypto/hkdf"
 )
 

@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
+	utls "github.com/refraction-networking/utls"
 	"encoding/json"
 	"io"
 	"math/rand"
@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apernet/quic-go"
-	"github.com/apernet/quic-go/http3"
+	"github.com/XLESSGo/uquic"
+	"github.com/XLESSGo/uquic/http3"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
 	"github.com/XLESSGo/XLESS/core/internal/protocol"
@@ -40,10 +40,10 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
+	tlsConfig := &utls.Config{
 		Certificates:   config.TLSConfig.Certificates,
 		GetCertificate: config.TLSConfig.GetCertificate,
-	})
+	}
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
@@ -55,7 +55,19 @@ func NewServer(config *Config) (Server, error) {
 		EnableDatagrams:                true,
 		DisablePathManager:             true,
 	}
-	listener, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
+	var listener *quic.Listener
+	var err error
+
+	if config.EnableUQUIC {
+		quicSpec, errSpec := quic.QUICID2Spec(config.UQUICSpecID)
+		if errSpec != nil {
+			_ = config.Conn.Close()
+			return nil, errSpec
+		}
+		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig, &quicSpec)
+	} else {
+		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
+	}
 	if err != nil {
 		_ = config.Conn.Close()
 		return nil, err

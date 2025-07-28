@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apernet/quic-go"
+	"github.com/XLESSGo/uquic"
 
 	"github.com/XLESSGo/XLESS/core/internal/frag"
 	"github.com/XLESSGo/XLESS/core/internal/protocol"

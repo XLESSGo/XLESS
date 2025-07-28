@@ -8,7 +8,7 @@ import (
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion/common"
 
-	"github.com/apernet/quic-go/congestion"
+	"github.com/XLESSGo/uquic/congestion"
 )
 
 const (
