@@ -10,11 +10,20 @@ require (
 	github.com/XLESSGo/protean v0.0.0
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/caddyserver/certmagic v0.22.1
+	github.com/libdns/bunny v1.5.0
 	github.com/libdns/cloudflare v0.1.1
+	github.com/libdns/dnsimple v0.4.0
 	github.com/libdns/duckdns v0.2.0
+	github.com/libdns/dynu v1.0.0
 	github.com/libdns/gandi v1.0.3
 	github.com/libdns/godaddy v1.0.3
+	github.com/libdns/hexonet v0.1.0
+	github.com/libdns/inwx v0.3.0
 	github.com/libdns/namedotcom v0.3.3
+	github.com/libdns/powerdns v0.1.3
+	github.com/libdns/regfish v0.0.0-20250710113612-8b64bd89b1ca
+	github.com/libdns/scaleway v0.2.2
+	github.com/libdns/tencentcloud v1.4.2
 	github.com/libdns/vultr v1.0.0
 	github.com/mdp/qrterminal/v3 v3.1.1
 	github.com/mholt/acmez/v3 v3.1.1
@@ -34,11 +43,14 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apernet/quic-go v0.52.1-0.20250607183305-9320c9d14431 // indirect
 	github.com/babolivier/go-doh-client v0.0.0-20201028162107-a76cff4cb8b6 // indirect
+	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cloudflare/circl v1.5.0 // indirect
 	github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a // indirect
 	github.com/database64128/tfo-go/v2 v2.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dnsimple/dnsimple-go/v5 v5.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -47,19 +59,25 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.6 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.5 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/hexonet/go-sdk v3.5.1+incompatible // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
-	github.com/libdns/libdns v0.2.3 // indirect
+	github.com/libdns/libdns v1.1.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/miekg/dns v1.1.63 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/mittwald/go-powerdns v0.6.6 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pquerna/otp v1.4.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
+	github.com/regfish/regfish-dnsapi-go v0.1.1 // indirect
+	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.33 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -75,12 +93,13 @@ require (
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/oauth2 v0.20.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
