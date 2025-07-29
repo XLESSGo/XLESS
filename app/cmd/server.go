@@ -272,10 +272,10 @@ func (c *serverConfig) fillConn(hyConfig *server.Config) error {
 	}
 
 	var ob obfs.Obfuscator
-	// 使用 obfs 包中的工厂函数来创建混淆器
-	ob, err = obfs.NewObfuscatorFromConfig(c.Obfs.ObfuscatorConfig) // 直接传递嵌入的 ObfuscatorConfig
+	// Use factory function from obfs package to create obfuscator
+	ob, err = obfs.NewObfuscatorFromConfig(c.Obfs.ObfuscatorConfig) // Directly pass embedded ObfuscatorConfig
 	if err != nil {
-		return configError{Field: "obfs", Err: err} // 错误信息可以更通用
+		return configError{Field: "obfs", Err: err} // Error message can be more generic
 	}
 
 	if ob == nil {
@@ -287,8 +287,6 @@ func (c *serverConfig) fillConn(hyConfig *server.Config) error {
 }
 
 func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
-	hyConfig.TLSConfig = &utls.Config{} // 确保 TLSConfig 被初始化
-
 	// If both TLS and ACME are unset, fallback to protean mimic cert
 	if c.TLS == nil && c.ACME == nil {
 		// Extract decoy host from DecoyURL
@@ -315,13 +313,18 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			return configError{Field: "tls", Err: fmt.Errorf("failed to generate mimic certificate: %w", err)}
 		}
 
-		// utls.Certificate 是 tls.Certificate 的别名，可以直接转换
-		utlsCert := (utls.Certificate)(*stdCert)
-		hyConfig.TLSConfig.Certificates = []utls.Certificate{utlsCert}
+		// Convert *crypto/tls.Certificate to utls.Certificate (逐字段复制)
+		utlsCert := utls.Certificate{
+			Certificate: stdCert.Certificate,
+			PrivateKey:  stdCert.PrivateKey,
+			Leaf:        stdCert.Leaf,
+			// OCSPStaple and SignedCertificateTimestamps usually not needed for client-side use in utls config
+		}
+		hyConfig.TLSConfig.Certificates = []utls.Certificate{utlsCert} // Use converted utlsCert
 
 		// Wrap GetCertificate: Always return the pre-generated mimic certificate
 		hyConfig.TLSConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			return &utlsCert, nil
+			return &utlsCert, nil // Return address of converted utlsCert
 		}
 		return nil
 	}
@@ -352,6 +355,8 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			KeyFile:  c.TLS.Key,
 			SNIGuard: sniGuard,
 		}
+		// Try loading the cert-key pair here to catch errors early
+		// (e.g. invalid files or insufficient permissions)
 		err := certLoader.InitializeCache()
 		if err != nil {
 			var pathErr *os.PathError
@@ -365,34 +370,37 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			}
 			return configError{Field: "tls", Err: err}
 		}
-		// FIX: 包装 GetCertificate 以处理 utls 和 crypto/tls 之间的类型不匹配
+		// Use GetCertificate instead of Certificates so that
+		// users can update the cert without restarting the server.
+		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// 将 utls.ClientHelloInfo 转换为 tls.ClientHelloInfo
-			stdClientHello := &tls.ClientHelloInfo{
-				ServerName:        utlsClientHello.ServerName,
-				Conn:              utlsClientHello.Conn,
-				CipherSuites:      utlsClientHello.CipherSuites,
-				SupportedCurves:   utlsClientHello.SupportedCurves,
-				SupportedPoints:   utlsClientHello.SupportedPoints,
-				SignatureSchemes:  utlsClientHello.SignatureSchemes,
-				SupportedProtos:   utlsClientHello.SupportedProtos,
-				SupportedVersions: utlsClientHello.SupportedVersions,
-			}
-			// certLoader.GetCertificate 期望 *tls.ClientHelloInfo 并返回 *tls.Certificate
-			stdCert, err := certLoader.GetCertificate(stdClientHello)
+			// **FIX for original error 1 & 2**:
+			// certLoader.GetCertificate returns *crypto/tls.Certificate, so convert it to *utls.Certificate.
+			// Pass the embedded crypto/tls.ClientHelloInfo from utlsClientHello.
+			stdCert, err := certLoader.GetCertificate(utlsClientHello.ClientHelloInfo) // Use embedded std ClientHelloInfo
 			if err != nil {
 				return nil, err
 			}
-			// utls.Certificate 是 tls.Certificate 的别名，可以直接返回
-			return stdCert, nil
+			// Convert *crypto/tls.Certificate to *utls.Certificate
+			utlsCert := &utls.Certificate{
+				Certificate: stdCert.Certificate,
+				PrivateKey:  stdCert.PrivateKey,
+				Leaf:        stdCert.Leaf,
+				OCSPStaple:  stdCert.OCSPStaple,
+				SignedCertificateTimestamps: stdCert.SignedCertificateTimestamps,
+			}
+			return utlsCert, nil // Return converted utlsCert
 		}
 		return nil
 	}
 	// If ACME is set
 	if c.ACME != nil {
-		// ... (ACME logic remains the same)
 		dataDir := c.ACME.Dir
 		if dataDir == "" {
+			// If not specified in the config, check the environment variable
+			// before resorting to the default "acme" value. The main reason
+			// we have this is so that our setup script can set it to the
+			// user's home directory.
 			dataDir = envOrDefaultString(appACMEDirEnv, "acme")
 		}
 		cmCfg := &certmagic.Config{
@@ -409,19 +417,92 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		})
 		switch strings.ToLower(c.ACME.CA) {
 		case "letsencrypt", "le", "":
+			// Default to Let's Encrypt
 			cmIssuer.CA = certmagic.LetsEncryptProductionCA
 		case "zerossl", "zero":
 			cmIssuer.CA = certmagic.ZeroSSLProductionCA
+			// Pass the correct acmev2.EAB type
 			eab, err := genZeroSSLEAB(c.ACME.Email)
 			if err != nil {
 				return configError{Field: "acme.ca", Err: err}
 			}
-			cmIssuer.ExternalAccount = eab
+			cmIssuer.ExternalAccount = eab // Assign the correct acmev2.EAB
 		default:
 			return configError{Field: "acme.ca", Err: errors.New("unsupported CA")}
 		}
 
-		// ... (ACME challenge logic remains the same)
+		switch strings.ToLower(c.ACME.Type) {
+		case "http":
+			cmIssuer.DisableHTTPChallenge = false
+			cmIssuer.DisableTLSALPNChallenge = true
+			cmIssuer.DNS01Solver = nil
+			cmIssuer.AltHTTPPort = c.ACME.HTTP.AltPort
+		case "tls":
+			cmIssuer.DisableHTTPChallenge = true
+			cmIssuer.DisableTLSALPNChallenge = false
+			cmIssuer.DNS01Solver = nil
+			cmIssuer.AltTLSALPNPort = c.ACME.TLS.AltPort
+		case "dns":
+			cmIssuer.DisableHTTPChallenge = true
+			cmIssuer.DisableTLSALPNChallenge = true
+			if c.ACME.DNS.Name == "" {
+				return configError{Field: "acme.dns.name", Err: errors.New("empty DNS provider name")}
+			}
+			if c.ACME.DNS.Config == nil {
+				return configError{Field: "acme.dns.config", Err: errors.New("empty DNS provider config")}
+			}
+			switch strings.ToLower(c.ACME.DNS.Name) {
+			case "cloudflare":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &cloudflare.Provider{ // <-- 再次确认，这里是 DNSProvider
+						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
+					},
+				}
+			case "duckdns":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &duckdns.Provider{ // <-- 再次确认，这里是 DNSProvider
+						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
+						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
+					},
+				}
+			case "gandi":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &gandi.Provider{ // <-- 再次确认，这里是 DNSProvider
+						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
+					},
+				}
+			case "godaddy":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &godaddy.Provider{ // <-- 再次确认，这里是 DNSProvider
+						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
+					},
+				}
+			case "namedotcom":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &namedotcom.Provider{ // <-- 再次确认，这里是 DNSProvider
+						Token:  c.ACME.DNS.Config["namedotcom_token"],
+						User:   c.ACME.DNS.Config["namedotcom_user"],
+						Server: c.ACME.DNS.Config["namedotcom_server"],
+					},
+				}
+			case "vultr":
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSProvider: &vultr.Provider{ // <-- 再次确认，这里是 DNSProvider
+						APIToken: c.ACME.DNS.Config["vultr_api_token"],
+					},
+				}
+			default:
+				return configError{Field: "acme.dns.name", Err: errors.New("unsupported DNS provider")}
+			}
+		case "":
+			// Legacy compatibility mode
+			cmIssuer.DisableHTTPChallenge = c.ACME.DisableHTTP
+			cmIssuer.DisableTLSALPNChallenge = c.ACME.DisableTLSALPN
+			cmIssuer.AltHTTPPort = c.ACME.AltHTTPPort
+			cmIssuer.AltTLSALPNPort = c.ACME.AltTLSALPNPort
+		default:
+			return configError{Field: "acme.type", Err: errors.New("unsupported ACME type")}
+		}
 
 		cmCfg.Issuers = []certmagic.Issuer{cmIssuer}
 		cmCache := certmagic.NewCache(certmagic.CacheOptions{
@@ -439,26 +520,25 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		if err != nil {
 			return configError{Field: "acme.domains", Err: err}
 		}
-		// FIX: 包装 certmagic.GetCertificate 以处理类型不匹配
+		// Wrap certmagic.GetCertificate (which returns crypto/tls.Certificate)
+		// to return utls.Certificate for hyConfig.TLSConfig
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// 将 utls.ClientHelloInfo 转换为 tls.ClientHelloInfo
-			stdClientHello := &tls.ClientHelloInfo{
-				ServerName:        utlsClientHello.ServerName,
-				Conn:              utlsClientHello.Conn,
-				CipherSuites:      utlsClientHello.CipherSuites,
-				SupportedCurves:   utlsClientHello.SupportedCurves,
-				SupportedPoints:   utlsClientHello.SupportedPoints,
-				SignatureSchemes:  utlsClientHello.SignatureSchemes,
-				SupportedProtos:   utlsClientHello.SupportedProtos,
-				SupportedVersions: utlsClientHello.SupportedVersions,
-			}
-			// cmCfg.GetCertificate 期望 *tls.ClientHelloInfo 并返回 *tls.Certificate
-			stdCert, err := cmCfg.GetCertificate(stdClientHello)
+			// **FIX for original error 1 & 2**:
+			// cmCfg.GetCertificate expects *crypto/tls.ClientHelloInfo and returns *crypto/tls.Certificate.
+			// So, extract the embedded standard ClientHelloInfo and convert the returned certificate.
+			stdCert, err := cmCfg.GetCertificate(utlsClientHello.ClientHelloInfo) // Use embedded std ClientHelloInfo
 			if err != nil {
 				return nil, err
 			}
-			// utls.Certificate 是 tls.Certificate 的别名，可以直接返回
-			return stdCert, nil
+			// Convert *crypto/tls.Certificate to *utls.Certificate
+			utlsCert := &utls.Certificate{
+				Certificate: stdCert.Certificate,
+				PrivateKey:  stdCert.PrivateKey,
+				Leaf:        stdCert.Leaf,
+				OCSPStaple:  stdCert.OCSPStaple,
+				SignedCertificateTimestamps: stdCert.SignedCertificateTimestamps,
+			}
+			return utlsCert, nil // Return converted utlsCert
 		}
 		return nil
 	}
@@ -467,11 +547,7 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 
 func (c *serverConfig) fillDecoyURL(hyConfig *server.Config) error {
 	if c.DecoyURL == "" {
-		// DecoyURL is optional if TLS/ACME is configured
-		if c.TLS == nil && c.ACME == nil {
-			return configError{Field: "decoyURL", Err: errors.New("decoyURL is required when not using TLS or ACME")}
-		}
-		return nil
+		return configError{Field: "decoyURL", Err: errors.New("decoyURL is empty")}
 	}
 	hyConfig.DecoyURL = c.DecoyURL
 	return nil
@@ -892,13 +968,22 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 		if c.Masquerade.ListenHTTP != "" && c.Masquerade.ListenHTTPS == "" {
 			return configError{Field: "masquerade.listenHTTPS", Err: errors.New("having only HTTP server without HTTPS is not supported")}
 		}
-		// masq.MasqTCPServer.TLSConfig is *utls.Config
-		// hyConfig.TLSConfig is also *utls.Config, so direct assignment is correct.
+		// **FIX for original error 3**:
+		// masq.MasqTCPServer.TLSConfig is *utls.Config.
+		// hyConfig.TLSConfig is server.TLSConfig, which is a custom struct, not *utls.Config.
+		// We need to create a *utls.Config instance and populate it from hyConfig.TLSConfig.
+		utlsConfForMasq := &utls.Config{
+			Certificates:   hyConfig.TLSConfig.Certificates,
+			GetCertificate: hyConfig.TLSConfig.GetCertificate,
+			// If server.TLSConfig had other fields relevant to utls.Config, they would be copied here.
+			// Based on config.go, these are the only fields available in server.TLSConfig.
+		}
+
 		s := masq.MasqTCPServer{
 			QUICPort:  extractPortFromAddr(hyConfig.Conn.LocalAddr().String()),
 			HTTPSPort: extractPortFromAddr(c.Masquerade.ListenHTTPS),
 			Handler:   &masqHandlerLogWrapper{H: handler, QUIC: false},
-			TLSConfig: hyConfig.TLSConfig, // <-- 直接赋值，因为类型匹配
+			TLSConfig: utlsConfForMasq, // Use the newly created *utls.Config instance
 			ForceHTTPS: c.Masquerade.ForceHTTPS,
 		}
 		go runMasqTCPServer(&s, c.Masquerade.ListenHTTP, c.Masquerade.ListenHTTPS)
@@ -1065,5 +1150,3 @@ func extractPortFromAddr(addr string) int {
 	}
 	return port
 }
-
-
