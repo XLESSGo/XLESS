@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
-	"crypto/tls" // <-- 明确导入 crypto/tls
-	utls "github.com/refraction-networking/utls" // 保持 utls 导入
+	"crypto/tls" // 明确导入标准库的 tls
+	utls "github.com/refraction-networking/utls" // 导入 utls 并别名
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +23,7 @@ import (
 	"github.com/libdns/godaddy"
 	"github.com/libdns/namedotcom"
 	"github.com/libdns/vultr"
-	acmev2 "github.com/mholt/acmez/v2/acme" // <-- 更改 acme 导入到 v2 版本
+	acmev2 "github.com/mholt/acmez/v2/acme" // <-- 确保使用 acmez/v2/acme
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
@@ -313,18 +313,18 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			return configError{Field: "tls", Err: fmt.Errorf("failed to generate mimic certificate: %w", err)}
 		}
 
-		// Convert *crypto/tls.Certificate to utls.Certificate
+		// Convert *crypto/tls.Certificate to utls.Certificate (逐字段复制)
 		utlsCert := utls.Certificate{
 			Certificate: stdCert.Certificate,
 			PrivateKey:  stdCert.PrivateKey,
 			Leaf:        stdCert.Leaf,
 			// OCSPStaple and SignedCertificateTimestamps usually not needed for client-side use in utls config
 		}
-		hyConfig.TLSConfig.Certificates = []utls.Certificate{utlsCert} // Use the converted utlsCert
+		hyConfig.TLSConfig.Certificates = []utls.Certificate{utlsCert} // 使用转换后的 utlsCert
 
+		// Wrap GetCertificate: Always return the pre-generated mimic certificate
 		hyConfig.TLSConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Always return the pre-generated mimic certificate
-			return &utlsCert, nil // Return address of the converted utlsCert
+			return &utlsCert, nil // 返回转换后的 utlsCert 的地址
 		}
 		return nil
 	}
@@ -372,12 +372,49 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		}
 		// Use GetCertificate instead of Certificates so that
 		// users can update the cert without restarting the server.
-		// `certLoader.GetCertificate` is assumed to be `utls`-aware.
+		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Directly call certLoader.GetCertificate, as it's assumed to handle utls types
-			utlsCert, err := certLoader.GetCertificate(utlsClientHello)
+			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certLoader
+			// 逐字段复制切片
+			stdSupportedCurves := make([]tls.CurveID, len(utlsClientHello.SupportedCurves))
+			for i, c := range utlsClientHello.SupportedCurves {
+				stdSupportedCurves[i] = tls.CurveID(c)
+			}
+
+			stdSupportedPoints := make([]tls.CurveP256, len(utlsClientHello.SupportedPoints))
+			for i, p := range utlsClientHello.SupportedPoints {
+				stdSupportedPoints[i] = tls.CurveP256(p)
+			}
+
+			stdSignatureSchemes := make([]tls.SignatureScheme, len(utlsClientHello.SignatureSchemes))
+			for i, s := range utlsClientHello.SignatureSchemes {
+				stdSignatureSchemes[i] = tls.SignatureScheme(s)
+			}
+
+			stdClientHello := &tls.ClientHelloInfo{
+				Conn:              utlsClientHello.Conn,
+				ServerName:        utlsClientHello.ServerName,
+				CipherSuites:      utlsClientHello.CipherSuites,
+				SupportedCurves:   stdSupportedCurves,
+				SupportedPoints:   stdSupportedPoints,
+				SignatureSchemes:  stdSignatureSchemes,
+				SupportedVersions: utlsClientHello.SupportedVersions,
+				// utls.ClientHelloInfo 没有 Certificates 字段，所以这里不复制
+				// Certificates:      utlsClientHello.Certificates, // <-- 移除这一行
+				Request: utlsClientHello.Request,
+			}
+			stdCert, err := certLoader.GetCertificate(stdClientHello)
 			if err != nil {
 				return nil, err
+			}
+			if stdCert == nil {
+				return nil, nil
+			}
+			// Convert crypto/tls.Certificate to utls.Certificate (逐字段复制)
+			utlsCert := &utls.Certificate{
+				Certificate: stdCert.Certificate,
+				PrivateKey:  stdCert.PrivateKey,
+				Leaf:        stdCert.Leaf,
 			}
 			return utlsCert, nil
 		}
@@ -444,32 +481,32 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			switch strings.ToLower(c.ACME.DNS.Name) {
 			case "cloudflare":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &cloudflare.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &cloudflare.Provider{ // <-- 再次确认，这里是 DNSProvider
 						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
 					},
 				}
 			case "duckdns":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &duckdns.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &duckdns.Provider{ // <-- 再次确认，这里是 DNSProvider
 						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
 						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
 					},
 				}
 			case "gandi":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &gandi.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &gandi.Provider{ // <-- 再次确认，这里是 DNSProvider
 						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
 					},
 				}
 			case "godaddy":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &godaddy.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &godaddy.Provider{ // <-- 再次确认，这里是 DNSProvider
 						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
 					},
 				}
 			case "namedotcom":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &namedotcom.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &namedotcom.Provider{ // <-- 再次确认，这里是 DNSProvider
 						Token:  c.ACME.DNS.Config["namedotcom_token"],
 						User:   c.ACME.DNS.Config["namedotcom_user"],
 						Server: c.ACME.DNS.Config["namedotcom_server"],
@@ -477,7 +514,7 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 				}
 			case "vultr":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &vultr.Provider{ // <-- Reverted to DNSProvider
+					DNSProvider: &vultr.Provider{ // <-- 再次确认，这里是 DNSProvider
 						APIToken: c.ACME.DNS.Config["vultr_api_token"],
 					},
 				}
@@ -514,17 +551,33 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// to return utls.Certificate for hyConfig.TLSConfig
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
 			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certmagic
+			// 逐字段复制切片
+			stdSupportedCurves := make([]tls.CurveID, len(utlsClientHello.SupportedCurves))
+			for i, c := range utlsClientHello.SupportedCurves {
+				stdSupportedCurves[i] = tls.CurveID(c)
+			}
+
+			stdSupportedPoints := make([]tls.CurveP256, len(utlsClientHello.SupportedPoints))
+			for i, p := range utlsClientHello.SupportedPoints {
+				stdSupportedPoints[i] = tls.CurveP256(p)
+			}
+
+			stdSignatureSchemes := make([]tls.SignatureScheme, len(utlsClientHello.SignatureSchemes))
+			for i, s := range utlsClientHello.SignatureSchemes {
+				stdSignatureSchemes[i] = tls.SignatureScheme(s)
+			}
+
 			stdClientHello := &tls.ClientHelloInfo{
-				Conn:       utlsClientHello.Conn,
-				ServerName: utlsClientHello.ServerName,
-				// Copy other fields as needed
+				Conn:              utlsClientHello.Conn,
+				ServerName:        utlsClientHello.ServerName,
 				CipherSuites:      utlsClientHello.CipherSuites,
-				SupportedCurves:   utlsClientHello.SupportedCurves,
-				SupportedPoints:   utlsClientHello.SupportedPoints,
-				SignatureSchemes:  utlsClientHello.SignatureSchemes,
+				SupportedCurves:   stdSupportedCurves,
+				SupportedPoints:   stdSupportedPoints,
+				SignatureSchemes:  stdSignatureSchemes,
 				SupportedVersions: utlsClientHello.SupportedVersions,
-				Certificates:      utlsClientHello.Certificates,
-				Request:           utlsClientHello.Request,
+				// utls.ClientHelloInfo 没有 Certificates 字段，这里不复制
+				// Certificates:      utlsClientHello.Certificates, // <-- 移除这一行
+				Request: utlsClientHello.Request,
 			}
 			stdCert, err := cmCfg.GetCertificate(stdClientHello)
 			if err != nil {
@@ -533,7 +586,7 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			if stdCert == nil {
 				return nil, nil
 			}
-			// Convert crypto/tls.Certificate to utls.Certificate
+			// Convert crypto/tls.Certificate to utls.Certificate (逐字段复制)
 			utlsCert := &utls.Certificate{
 				Certificate: stdCert.Certificate,
 				PrivateKey:  stdCert.PrivateKey,
@@ -966,13 +1019,16 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 	hyConfig.MasqHandler = &masqHandlerLogWrapper{H: handler, QUIC: true}
 
 	if c.Masquerade.ListenHTTP != "" || c.Masquerade.ListenHTTPS != "" {
-		// As per the error, masq.MasqTCPServer.TLSConfig expects *utls.Config.
-		// hyConfig.TLSConfig is already *utls.Config, so directly assign it.
+		if c.Masquerade.ListenHTTP != "" && c.Masquerade.ListenHTTPS == "" {
+			return configError{Field: "masquerade.listenHTTPS", Err: errors.New("having only HTTP server without HTTPS is not supported")}
+		}
+		// masq.MasqTCPServer.TLSConfig is *utls.Config
+		// hyConfig.TLSConfig is also *utls.Config, so direct assignment is correct.
 		s := masq.MasqTCPServer{
 			QUICPort:  extractPortFromAddr(hyConfig.Conn.LocalAddr().String()),
 			HTTPSPort: extractPortFromAddr(c.Masquerade.ListenHTTPS),
 			Handler:   &masqHandlerLogWrapper{H: handler, QUIC: false},
-			TLSConfig: hyConfig.TLSConfig, // <-- Directly assign hyConfig.TLSConfig
+			TLSConfig: hyConfig.TLSConfig, // <-- 直接赋值，因为类型匹配
 			ForceHTTPS: c.Masquerade.ForceHTTPS,
 		}
 		go runMasqTCPServer(&s, c.Masquerade.ListenHTTP, c.Masquerade.ListenHTTPS)
