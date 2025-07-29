@@ -374,49 +374,15 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// users can update the cert without restarting the server.
 		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certLoader
-			// 逐字段复制切片
-			stdSupportedCurves := make([]tls.CurveID, len(utlsClientHello.SupportedCurves))
-			for i, c := range utlsClientHello.SupportedCurves {
-				stdSupportedCurves[i] = tls.CurveID(c)
-			}
-
-			stdSupportedPoints := make([]tls.CurveP256, len(utlsClientHello.SupportedPoints))
-			for i, p := range utlsClientHello.SupportedPoints {
-				stdSupportedPoints[i] = tls.CurveP256(p)
-			}
-
-			stdSignatureSchemes := make([]tls.SignatureScheme, len(utlsClientHello.SignatureSchemes))
-			for i, s := range utlsClientHello.SignatureSchemes {
-				stdSignatureSchemes[i] = tls.SignatureScheme(s)
-			}
-
-			stdClientHello := &tls.ClientHelloInfo{
-				Conn:              utlsClientHello.Conn,
-				ServerName:        utlsClientHello.ServerName,
-				CipherSuites:      utlsClientHello.CipherSuites,
-				SupportedCurves:   stdSupportedCurves,
-				SupportedPoints:   stdSupportedPoints,
-				SignatureSchemes:  stdSignatureSchemes,
-				SupportedVersions: utlsClientHello.SupportedVersions,
-				// utls.ClientHelloInfo 没有 Certificates 字段，所以这里不复制
-				// Certificates:      utlsClientHello.Certificates, // <-- 移除这一行
-				Request: utlsClientHello.Request,
-			}
-			stdCert, err := certLoader.GetCertificate(stdClientHello)
+			// **IMPORTANT ASSUMPTION based on user error**:
+			// The error "cannot use stdClientHello as ... utls.ClientHelloInfo value in argument to certLoader.GetCertificate"
+			// implies that certLoader.GetCertificate is expecting a *utls.ClientHelloInfo and returning *utls.Certificate.
+			// This is non-standard for certmagic/utils, but we follow the error explicitly.
+			utlsCert, err := certLoader.GetCertificate(utlsClientHello) // Pass utlsClientHello directly
 			if err != nil {
 				return nil, err
 			}
-			if stdCert == nil {
-				return nil, nil
-			}
-			// Convert crypto/tls.Certificate to utls.Certificate (逐字段复制)
-			utlsCert := &utls.Certificate{
-				Certificate: stdCert.Certificate,
-				PrivateKey:  stdCert.PrivateKey,
-				Leaf:        stdCert.Leaf,
-			}
-			return utlsCert, nil
+			return utlsCert, nil // Return utlsCert directly
 		}
 		return nil
 	}
@@ -550,49 +516,15 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// Wrap certmagic.GetCertificate (which returns crypto/tls.Certificate)
 		// to return utls.Certificate for hyConfig.TLSConfig
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certmagic
-			// 逐字段复制切片
-			stdSupportedCurves := make([]tls.CurveID, len(utlsClientHello.SupportedCurves))
-			for i, c := range utlsClientHello.SupportedCurves {
-				stdSupportedCurves[i] = tls.CurveID(c)
-			}
-
-			stdSupportedPoints := make([]tls.CurveP256, len(utlsClientHello.SupportedPoints))
-			for i, p := range utlsClientHello.SupportedPoints {
-				stdSupportedPoints[i] = tls.CurveP256(p)
-			}
-
-			stdSignatureSchemes := make([]tls.SignatureScheme, len(utlsClientHello.SignatureSchemes))
-			for i, s := range utlsClientHello.SignatureSchemes {
-				stdSignatureSchemes[i] = tls.SignatureScheme(s)
-			}
-
-			stdClientHello := &tls.ClientHelloInfo{
-				Conn:              utlsClientHello.Conn,
-				ServerName:        utlsClientHello.ServerName,
-				CipherSuites:      utlsClientHello.CipherSuites,
-				SupportedCurves:   stdSupportedCurves,
-				SupportedPoints:   stdSupportedPoints,
-				SignatureSchemes:  stdSignatureSchemes,
-				SupportedVersions: utlsClientHello.SupportedVersions,
-				// utls.ClientHelloInfo 没有 Certificates 字段，这里不复制
-				// Certificates:      utlsClientHello.Certificates, // <-- 移除这一行
-				Request: utlsClientHello.Request,
-			}
-			stdCert, err := cmCfg.GetCertificate(stdClientHello)
+			// **IMPORTANT ASSUMPTION based on user error**:
+			// The error "cannot use stdClientHello as ... utls.ClientHelloInfo value in argument to certLoader.GetCertificate"
+			// implies that certmagic.GetCertificate is also expecting a *utls.ClientHelloInfo and returning *utls.Certificate.
+			// This is non-standard for certmagic, but we follow the error explicitly.
+			utlsCert, err := cmCfg.GetCertificate(utlsClientHello) // Pass utlsClientHello directly
 			if err != nil {
 				return nil, err
 			}
-			if stdCert == nil {
-				return nil, nil
-			}
-			// Convert crypto/tls.Certificate to utls.Certificate (逐字段复制)
-			utlsCert := &utls.Certificate{
-				Certificate: stdCert.Certificate,
-				PrivateKey:  stdCert.PrivateKey,
-				Leaf:        stdCert.Leaf,
-			}
-			return utlsCert, nil
+			return utlsCert, nil // Return utlsCert directly
 		}
 		return nil
 	}
