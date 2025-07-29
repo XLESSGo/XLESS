@@ -2,8 +2,6 @@
 
 XLESS is a modern, highly obfuscated, and extremely secure proxy forwarding tool that supports HTTP/3 & UDP. It is designed for anti-detection and anti-interference scenarios, featuring real website traffic obfuscation, deep disguise of authentication requests, and transparent decoy reverse proxy capabilities. XLESS is ideal for high-threat environments where active probing and passive traffic analysis are concerns.
 
-## WARNING: If the issue in app/cmd/server.go consists, the DNS part may be abandoned.
-
 ## Features
 
   - **Full-Link uQUIC/HTTP/3 Support**: Ensures high efficiency, low latency, and cross-platform compatibility.
