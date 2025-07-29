@@ -44,24 +44,49 @@ func (s *MasqTCPServer) ListenAndServeHTTPS(addr string) error {
 		stdTLSConfig = &tls.Config{
 			InsecureSkipVerify: s.TLSConfig.InsecureSkipVerify,
 			ServerName:         s.TLSConfig.ServerName,
-			// Add other fields you might use from utls.Config like MaxVersion, MinVersion, CipherSuites etc.
-			// Example for Certificates:
-			Certificates: make([]tls.Certificate, len(s.TLSConfig.Certificates)),
-		}
-		for i, cert := range s.TLSConfig.Certificates {
-			stdTLSConfig.Certificates[i] = tls.Certificate(cert) // 直接转换
+			MinVersion:         s.TLSConfig.MinVersion,
+			MaxVersion:         s.TLSConfig.MaxVersion,
+			CipherSuites:       s.TLSConfig.CipherSuites,
+			// ... 其他你需要从 utls.Config 复制到 crypto/tls.Config 的字段
 		}
 
-		// 转换 GetCertificate 函数 - 这是最复杂的部分
+		// 转换 Certificates: []utls.Certificate -> []crypto/tls.Certificate
+		if len(s.TLSConfig.Certificates) > 0 {
+			stdTLSConfig.Certificates = make([]tls.Certificate, len(s.TLSConfig.Certificates))
+			for i, cert := range s.TLSConfig.Certificates {
+				stdTLSConfig.Certificates[i] = tls.Certificate(cert) // 直接转换
+			}
+		}
+
+		// 转换 GetCertificate 函数: func(*utls.ClientHelloInfo) -> func(*crypto/tls.ClientHelloInfo)
 		if s.TLSConfig.GetCertificate != nil {
 			stdTLSConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				// 1. 将 crypto/tls.ClientHelloInfo 转换为 utls.ClientHelloInfo
+				// 需要手动遍历转换切片，以避免直接类型转换的限制
+				utlsSupportedCurves := make([]utls.CurveID, len(info.SupportedCurves))
+				for i, c := range info.SupportedCurves {
+					utlsSupportedCurves[i] = utls.CurveID(c)
+				}
+
+				// utls.ClientHelloInfo 的 SupportedPoints 通常是 []uint8，
+				// 而 crypto/tls.ClientHelloInfo.SupportedPoints 是 []tls.CurveP256 (uint8 的别名)
+				// 这里需要将 []tls.CurveP256 转换为 []uint8
+				utlsSupportedPoints := make([]uint8, len(info.SupportedPoints))
+				for i, p := range info.SupportedPoints {
+					utlsSupportedPoints[i] = uint8(p) // 将 tls.CurveP256 (uint8) 转换为 uint8
+				}
+
+				utlsSignatureSchemes := make([]utls.SignatureScheme, len(info.SignatureSchemes))
+				for i, s := range info.SignatureSchemes {
+					utlsSignatureSchemes[i] = utls.SignatureScheme(s)
+				}
+
 				utlsInfo := &utls.ClientHelloInfo{
 					CipherSuites:      info.CipherSuites,
 					ServerName:        info.ServerName,
-					SupportedCurves:   []utls.CurveID(info.SupportedCurves),
-					SupportedPoints:   []utls.CurveP256(info.SupportedPoints), // or []utls.CurveP256(info.SupportedPoints)
-					SignatureSchemes:  []utls.SignatureScheme(info.SignatureSchemes),
+					SupportedCurves:   utlsSupportedCurves,
+					SupportedPoints:   utlsSupportedPoints, // 使用转换后的 []uint8
+					SignatureSchemes:  utlsSignatureSchemes,
 					SupportedVersions: info.SupportedVersions,
 					Conn:              info.Conn,
 				}
@@ -72,12 +97,12 @@ func (s *MasqTCPServer) ListenAndServeHTTPS(addr string) error {
 					return nil, err
 				}
 				if utlsCert == nil {
-					return nil, nil
+					return nil, nil // 重要：如果原始函数返回nil证书，也返回nil
 				}
 
 				// 3. 将返回的 *utls.Certificate 转换为 *crypto/tls.Certificate
-				stdCert := tls.Certificate(*utlsCert)
-				return &stdCert, nil
+				stdCert := tls.Certificate(*utlsCert) // 先解引用得到结构体，再转换
+				return &stdCert, nil                  // 返回转换后的结构体的指针
 			}
 		}
 	}
