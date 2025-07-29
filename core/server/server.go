@@ -11,9 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/XLESSGo/uquic"
-	"github.com/XLESSGo/uquic/http3"
-	utls "github.com/refraction-networking/utls" // Add this import with alias
+	"github.com/apernet/quic-go"
+	"github.com/apernet/quic-go/http3"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
 	"github.com/XLESSGo/XLESS/core/internal/protocol"
@@ -41,66 +40,10 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-
-	// Create a *utls.Config instance to be used by uquic/http3
-	utlsConfig := &utls.Config{}
-
-	// --- Fix 1 & 4: Convert []crypto/tls.Certificate to []utls.Certificate ---
-	// Error: server/server.go:56:50: cannot convert cert (variable of struct type "crypto/tls".Certificate) to type "github.com/refraction-networking/utls".Certificate
-	// This means config.TLSConfig.Certificates contains crypto/tls.Certificate.
-	// We need to convert each element to utls.Certificate.
-	if len(config.TLSConfig.Certificates) > 0 {
-		utlsConfig.Certificates = make([]utls.Certificate, len(config.TLSConfig.Certificates))
-		for i, cert := range config.TLSConfig.Certificates {
-			utlsConfig.Certificates[i] = utls.Certificate(cert) // Direct struct-to-struct conversion
-		}
-	}
-
-	// --- Fix 2 & 3: Wrap GetCertificate function for type compatibility ---
-	// Error: server/server.go:67:24: cannot use info.SupportedCurves (variable of type []"github.com/refraction-networking/utls".CurveID) as []"crypto/tls".CurveID value in struct literal
-	// Error: server/server.go:69:24: cannot use info.SignatureSchemes (variable of type []"github.com/refraction-networking/utls".SignatureScheme) as []"crypto/tls".SignatureScheme value in struct literal
-	// Error: server/server.go:78:33: cannot convert *stdCert (variable of struct type "crypto/tls".Certificate) to type "github.com/refraction-networking/utls".Certificate
-
-	// This wrapper function will translate between utls.ClientHelloInfo
-	// and crypto/tls.ClientHelloInfo, and between crypto/tls.Certificate
-	// and utls.Certificate.
-	if config.TLSConfig.GetCertificate != nil {
-		utlsConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo
-			// Note: SupportedPoints in utls is []uint8, crypto/tls is []tls.CurveP256.
-			// Direct conversion `[]tls.CurveP256(info.SupportedPoints)` might not be robust
-			// if the underlying type is not a simple alias. Let's try direct casting first.
-			// If it fails, we might need a manual loop or check the actual underlying types.
-			stdInfo := &tls.ClientHelloInfo{ // Using standard crypto/tls types here
-				CipherSuites:      info.CipherSuites,
-				ServerName:        info.ServerName,
-				SupportedCurves:   []tls.CurveID(info.SupportedCurves),   // Convert []utls.CurveID to []crypto/tls.CurveID
-				SupportedPoints:   []tls.CurveP256(info.SupportedPoints), // Convert []utls.CurveP256 to []crypto/tls.CurveP256
-				SignatureSchemes:  []tls.SignatureScheme(info.SignatureSchemes), // Convert []utls.SignatureScheme to []crypto/tls.SignatureScheme
-				SupportedVersions: info.SupportedVersions,
-				Conn:              info.Conn,
-			}
-
-			// Call the original GetCertificate function from config.TLSConfig
-			// This function is expected to return *crypto/tls.Certificate
-			stdCert, err := config.TLSConfig.GetCertificate(stdInfo)
-			if err != nil {
-				return nil, err
-			}
-			if stdCert == nil {
-				return nil, nil // Important: return nil, nil if no certificate is found
-			}
-
-			// Convert the returned *crypto/tls.Certificate to *utls.Certificate
-			utlsCert := utls.Certificate(*stdCert) // Convert struct, then take address
-			return &utlsCert, nil
-		}
-	}
-
-	// Now, utlsConfig is correctly populated with utls types,
-	// so it can be passed to http3.ConfigureTLSConfig
-	tlsConfig := http3.ConfigureTLSConfig(utlsConfig)
-
+	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
+		Certificates:   config.TLSConfig.Certificates,
+		GetCertificate: config.TLSConfig.GetCertificate,
+	})
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
