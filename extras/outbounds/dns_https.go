@@ -1,8 +1,7 @@
 package outbounds
 
 import (
-	"crypto/tls" // <-- 添加这一行
-	utls "github.com/refraction-networking/utls" // 保持 utls 导入
+	"crypto/tls"
 	"net"
 	"net/http"
 	"time"
