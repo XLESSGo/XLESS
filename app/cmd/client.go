@@ -77,6 +77,8 @@ type clientConfig struct {
 	TCPRedirect   *tcpRedirectConfig    `mapstructure:"tcpRedirect"`
 	TUN           *tunConfig            `mapstructure:"tun"`
 	DecoyURL      string                `mapstructure:"decoyURL"` 
+	EnableUQUIC   bool                  `mapstructure:"enableUQUIC"`   // 从 clientConfigQUIC 移到这里
+	UQUICSpecID   quic.QUICID           `mapstructure:"uquicSpecID"` // 从 clientConfigQUIC 移到这里
 }
 
 type clientConfigTransportUDP struct {
@@ -110,8 +112,6 @@ type clientConfigQUIC struct {
 	KeepAlivePeriod             time.Duration            `mapstructure:"keepAlivePeriod"`
 	DisablePathMTUDiscovery     bool                     `mapstructure:"disablePathMTUDiscovery"`
 	Sockopts                    clientConfigQUICSockopts `mapstructure:"sockopts"`
-	EnableUQUIC                 bool          `mapstructure:"enableUQUIC"`   // 新增
-	UQUICSpecID                 quic.QUICID   `mapstructure:"uquicSpecID"` // 新增
 }
 
 type clientConfigQUICSockopts struct {
@@ -260,10 +260,10 @@ func (c *clientConfig) fillAuth(hyConfig *client.Config) error {
 	return nil
 }
 
-// 增加 fillUQUICConfig 方法
+// 2. 修改 fillUQUICConfig 方法，直接赋值给 hyConfig
 func (c *clientConfig) fillUQUICConfig(hyConfig *client.Config) error {
-	hyConfig.QUICConfig.EnableUQUIC = c.QUIC.EnableUQUIC
-	hyConfig.QUICConfig.UQUICSpecID = c.QUIC.UQUICSpecID
+	hyConfig.EnableUQUIC = c.EnableUQUIC   // 直接赋值给 hyConfig
+	hyConfig.UQUICSpecID = c.UQUICSpecID // 直接赋值给 hyConfig
 	return nil
 }
 
