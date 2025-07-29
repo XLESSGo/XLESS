@@ -27,6 +27,10 @@ type Config struct {
 	FastOpen        bool
 	DecoyURL        string
 
+	
+	EnableUQUIC     bool
+	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
+
 	filled bool // whether the fields have been verified and filled
 }
 
@@ -108,8 +112,6 @@ type QUICConfig struct {
 	KeepAlivePeriod                time.Duration
 	DisablePathMTUDiscovery        bool
 
-	EnableUQUIC     bool
-	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
 }
 
 // BandwidthConfig describes the maximum bandwidth that the server can use, in bytes per second.
