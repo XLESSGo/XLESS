@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
-	"crypto/tls" // 明确导入标准库的 tls
-	utls "github.com/refraction-networking/utls" // 导入 utls 并别名
+	"crypto/tls" // Explicitly import standard library tls
+	utls "github.com/refraction-networking/utls" // Import utls and alias it
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +23,7 @@ import (
 	"github.com/libdns/godaddy"
 	"github.com/libdns/namedotcom"
 	"github.com/libdns/vultr"
-	acmev2 "github.com/mholt/acmez/v2/acme" // <-- 确保使用 acmez/v2/acme
+	acmev2 "github.com/mholt/acmez/v2/acme" // <-- Ensure acmez/v2/acme is used
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
@@ -34,7 +34,7 @@ import (
 	"github.com/XLESSGo/XLESS/extras/auth"
 	"github.com/XLESSGo/XLESS/extras/correctnet"
 	"github.com/XLESSGo/XLESS/extras/masq"
-	"github.com/XLESSGo/XLESS/extras/obfs" // 导入 obfs 包
+	"github.com/XLESSGo/XLESS/extras/obfs" // Import obfs package
 	"github.com/XLESSGo/XLESS/extras/outbounds"
 	"github.com/XLESSGo/XLESS/extras/sniff"
 	"github.com/XLESSGo/XLESS/extras/trafficlogger"
@@ -57,7 +57,7 @@ func init() {
 
 type serverConfig struct {
 	Listen                string                      `mapstructure:"listen"`
-	Obfs                  serverConfigObfs            `mapstructure:"obfs"` // 修改这里，使用新的 serverConfigObfs
+	Obfs                  serverConfigObfs            `mapstructure:"obfs"` // Modified here, use the new serverConfigObfs
 	TLS                   *serverConfigTLS            `mapstructure:"tls"`
 	ACME                  *serverConfigACME           `mapstructure:"acme"`
 	QUIC                  serverConfigQUIC            `mapstructure:"quic"`
@@ -73,11 +73,11 @@ type serverConfig struct {
 	Outbounds             []serverConfigOutboundEntry `mapstructure:"outbounds"`
 	TrafficStats          serverConfigTrafficStats    `mapstructure:"trafficStats"`
 	Masquerade            serverConfigMasquerade      `mapstructure:"masquerade"`
-	DecoyURL              string                      `mapstructure:"decoyURL"` // 新
+	DecoyURL              string                      `mapstructure:"decoyURL"` // New field
 }
 
-// serverConfigObfs 结构体现在直接嵌入 obfs.ObfuscatorConfig
-// 使用 `mapstructure:",squash"` 标签使得 obfs.ObfuscatorConfig 的字段直接暴露在 serverConfigObfs 层面
+// serverConfigObfs struct now directly embeds obfs.ObfuscatorConfig
+// The `mapstructure:",squash"` tag makes fields of obfs.ObfuscatorConfig directly exposed at the serverConfigObfs level
 type serverConfigObfs struct {
 	obfs.ObfuscatorConfig `mapstructure:",squash"`
 }
@@ -374,10 +374,15 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// users can update the cert without restarting the server.
 		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// **FIX for original error 1 & 2**:
-			// certLoader.GetCertificate returns *crypto/tls.Certificate, so convert it to *utls.Certificate.
-			// Pass the embedded crypto/tls.ClientHelloInfo from utlsClientHello.
-			stdCert, err := certLoader.GetCertificate(utlsClientHello.ClientHelloInfo) // Use embedded std ClientHelloInfo
+			// **FIX for original error: utlsClientHello.ClientHelloInfo undefined**
+			// Construct a standard tls.ClientHelloInfo from utls.ClientHelloInfo
+			// certLoader.GetCertificate expects *crypto/tls.ClientHelloInfo
+			stdCHI := &tls.ClientHelloInfo{
+				ServerName: utlsClientHello.ServerName,
+				// Other fields from utlsClientHello can be copied if needed by certLoader.GetCertificate,
+				// but ServerName is typically sufficient for certificate selection.
+			}
+			stdCert, err := certLoader.GetCertificate(stdCHI) // Use constructed std ClientHelloInfo
 			if err != nil {
 				return nil, err
 			}
@@ -453,41 +458,47 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			}
 			switch strings.ToLower(c.ACME.DNS.Name) {
 			case "cloudflare":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &cloudflare.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &cloudflare.Provider{
 						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
 					},
 				}
 			case "duckdns":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &duckdns.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &duckdns.Provider{
 						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
 						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
 					},
 				}
 			case "gandi":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &gandi.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &gandi.Provider{
 						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
 					},
 				}
 			case "godaddy":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &godaddy.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &godaddy.Provider{
 						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
 					},
 				}
 			case "namedotcom":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &namedotcom.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &namedotcom.Provider{
 						Token:  c.ACME.DNS.Config["namedotcom_token"],
 						User:   c.ACME.DNS.Config["namedotcom_user"],
 						Server: c.ACME.DNS.Config["namedotcom_server"],
 					},
 				}
 			case "vultr":
+				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &vultr.Provider{ // <-- 再次确认，这里是 DNSProvider
+					DNSProvider: &vultr.Provider{
 						APIToken: c.ACME.DNS.Config["vultr_api_token"],
 					},
 				}
@@ -523,10 +534,15 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// Wrap certmagic.GetCertificate (which returns crypto/tls.Certificate)
 		// to return utls.Certificate for hyConfig.TLSConfig
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// **FIX for original error 1 & 2**:
+			// **FIX for original error: utlsClientHello.ClientHelloInfo undefined**
 			// cmCfg.GetCertificate expects *crypto/tls.ClientHelloInfo and returns *crypto/tls.Certificate.
 			// So, extract the embedded standard ClientHelloInfo and convert the returned certificate.
-			stdCert, err := cmCfg.GetCertificate(utlsClientHello.ClientHelloInfo) // Use embedded std ClientHelloInfo
+			stdCHI := &tls.ClientHelloInfo{
+				ServerName: utlsClientHello.ServerName,
+				// Other fields from utlsClientHello can be copied if needed by cmCfg.GetCertificate,
+				// but ServerName is typically sufficient for certificate selection.
+			}
+			stdCert, err := cmCfg.GetCertificate(stdCHI) // Use constructed std ClientHelloInfo
 			if err != nil {
 				return nil, err
 			}
@@ -968,7 +984,7 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 		if c.Masquerade.ListenHTTP != "" && c.Masquerade.ListenHTTPS == "" {
 			return configError{Field: "masquerade.listenHTTPS", Err: errors.New("having only HTTP server without HTTPS is not supported")}
 		}
-		// **FIX for original error 3**:
+		// **FIX for original error: cannot use hyConfig.TLSConfig (variable of struct type server.TLSConfig) as *"github.com/refraction-networking/utls".Config value in struct literal**
 		// masq.MasqTCPServer.TLSConfig is *utls.Config.
 		// hyConfig.TLSConfig is server.TLSConfig, which is a custom struct, not *utls.Config.
 		// We need to create a *utls.Config instance and populate it from hyConfig.TLSConfig.
