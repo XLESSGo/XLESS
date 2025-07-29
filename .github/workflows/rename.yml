@@ -20,7 +20,7 @@ jobs:
       - name: Find and replace module paths in .go files
         # Use find with xargs and sed for efficient batch replacement
         run: |
-          find . -type f -name "*.go" -print0 | xargs -0 sed -i 's|github.com/apernet/quic-go|github.com/XLESSGo/uquic|g'
+          find . -type f -name "*.go" -print0 | xargs -0 sed -i 's|crypto/tls|github.com/refraction-networking/utls|g'
           
       # Step 4: Configure Git user for commit
       - name: Configure Git User
