@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	utls "github.com/refraction-networking/utls"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"math/rand"
@@ -40,10 +40,10 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	tlsConfig := &utls.Config{
-		Certificates:    config.TLSConfig.Certificates,
+	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
+		Certificates:   config.TLSConfig.Certificates,
 		GetCertificate: config.TLSConfig.GetCertificate,
-	}
+	})
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
@@ -55,33 +55,7 @@ func NewServer(config *Config) (Server, error) {
 		EnableDatagrams:                true,
 		DisablePathManager:             true,
 	}
-	var listener *quic.Listener
-	var err error
-
-	// The `quic.Listen` function does not take a QUICSpec argument.
-	// QUICSpec is typically used on the client side for fingerprinting.
-	// Therefore, the logic for `EnableUQUIC` should not affect the `quic.Listen` call directly.
-	// We simply call quic.Listen with the standard parameters.
-	// The `quicSpec` and `EnableUQUIC` configuration would be relevant for client-side
-	// connection establishment or if `uquic` provides a specific server-side
-	// listener for advanced fingerprinting, which is not indicated by this `Listen` signature.
-
-	// If `EnableUQUIC` is meant to enable some server-side fingerprint recognition/handling,
-	// that logic would need to be implemented elsewhere, perhaps within the `quic.Config`
-	// or in a custom `TLSConfig` if `utls` handles it, or through a different listener function
-	// provided by `uquic` specifically for server-side fingerprinting.
-	// Based on the error, the standard `quic.Listen` is used.
-	
-	// If the intention was to use a *specific* listener that understands UQUIC behavior on the server side,
-	// the `uquic` library would need to expose a different `Listen` function,
-	// for example, `uquic.ListenWithSpec` or similar. Since it's not,
-	// we stick to the provided `quic.Listen` signature.
-	
-	// Therefore, the `if config.EnableUQUIC` branch for `quic.Listen` is removed,
-	// as it's the same call regardless.
-	
-	listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
-	
+	listener, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
 	if err != nil {
 		_ = config.Conn.Close()
 		return nil, err
