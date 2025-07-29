@@ -109,6 +109,8 @@ type clientConfigQUIC struct {
 	KeepAlivePeriod             time.Duration            `mapstructure:"keepAlivePeriod"`
 	DisablePathMTUDiscovery     bool                     `mapstructure:"disablePathMTUDiscovery"`
 	Sockopts                    clientConfigQUICSockopts `mapstructure:"sockopts"`
+	EnableUQUIC   bool          `mapstructure:"enableUQUIC"`   // 新增
+	UQUICSpecID   quic.QUICID   `mapstructure:"uquicSpecID"` // 新增
 }
 
 type clientConfigQUICSockopts struct {
@@ -254,6 +256,13 @@ func (c *clientConfig) fillConnFactory(hyConfig *client.Config) error {
 
 func (c *clientConfig) fillAuth(hyConfig *client.Config) error {
 	hyConfig.Auth = c.Auth
+	return nil
+}
+
+// 增加 fillUQUICConfig 方法
+func (c *clientConfig) fillUQUICConfig(hyConfig *client.Config) error {
+	hyConfig.QUICConfig.EnableUQUIC = c.QUIC.EnableUQUIC
+	hyConfig.QUICConfig.UQUICSpecID = c.QUIC.UQUICSpecID
 	return nil
 }
 
@@ -426,6 +435,7 @@ func (c *clientConfig) Config() (*client.Config, error) {
 		c.fillBandwidthConfig,
 		c.fillFastOpen,
 		c.fillDecoyURL, 
+		c.fillUQUICConfig, // 新增
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
