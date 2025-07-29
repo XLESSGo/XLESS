@@ -375,26 +375,13 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
 			// **FIX for original error: utlsClientHello.ClientHelloInfo undefined**
-			// Construct a standard tls.ClientHelloInfo from utls.ClientHelloInfo
-			// certLoader.GetCertificate expects *crypto/tls.ClientHelloInfo
-			stdCHI := &tls.ClientHelloInfo{
-				ServerName: utlsClientHello.ServerName,
-				// Other fields from utlsClientHello can be copied if needed by certLoader.GetCertificate,
-				// but ServerName is typically sufficient for certificate selection.
-			}
-			stdCert, err := certLoader.GetCertificate(stdCHI) // Use constructed std ClientHelloInfo
+			// **最新修复 (针对 385 行错误): certLoader.GetCertificate 期望接收 *utls.ClientHelloInfo 并返回 *utls.Certificate。**
+			// 直接将 utlsClientHello 传递给 certLoader.GetCertificate
+			utlsCert, err := certLoader.GetCertificate(utlsClientHello) // 修复后的第 385 行
 			if err != nil {
 				return nil, err
 			}
-			// Convert *crypto/tls.Certificate to *utls.Certificate
-			utlsCert := &utls.Certificate{
-				Certificate: stdCert.Certificate,
-				PrivateKey:  stdCert.PrivateKey,
-				Leaf:        stdCert.Leaf,
-				OCSPStaple:  stdCert.OCSPStaple,
-				SignedCertificateTimestamps: stdCert.SignedCertificateTimestamps,
-			}
-			return utlsCert, nil // Return converted utlsCert
+			return utlsCert, nil // 直接返回 utlsCert，无需额外转换
 		}
 		return nil
 	}
