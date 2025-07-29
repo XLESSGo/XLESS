@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"github.com/XLESSGo/uquic"
 
 	"github.com/XLESSGo/XLESS/app/internal/forwarding"
 	"github.com/XLESSGo/XLESS/app/internal/http"
@@ -109,8 +110,8 @@ type clientConfigQUIC struct {
 	KeepAlivePeriod             time.Duration            `mapstructure:"keepAlivePeriod"`
 	DisablePathMTUDiscovery     bool                     `mapstructure:"disablePathMTUDiscovery"`
 	Sockopts                    clientConfigQUICSockopts `mapstructure:"sockopts"`
-	EnableUQUIC   bool          `mapstructure:"enableUQUIC"`   // 新增
-	UQUICSpecID   quic.QUICID   `mapstructure:"uquicSpecID"` // 新增
+	EnableUQUIC                 bool          `mapstructure:"enableUQUIC"`   // 新增
+	UQUICSpecID                 quic.QUICID   `mapstructure:"uquicSpecID"` // 新增
 }
 
 type clientConfigQUICSockopts struct {
