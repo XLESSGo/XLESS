@@ -13,6 +13,7 @@ import (
 
 	"github.com/XLESSGo/uquic"
 	"github.com/XLESSGo/uquic/http3"
+	utls "github.com/refraction-networking/utls" // Add this import with alias
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
 	"github.com/XLESSGo/XLESS/core/internal/protocol"
@@ -40,10 +41,48 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	tlsConfig := http3.ConfigureTLSConfig(&tls.Config{
-		Certificates:   config.TLSConfig.Certificates,
-		GetCertificate: config.TLSConfig.GetCertificate,
-	})
+
+	// Create a *utls.Config instance
+	utlsConfig := &utls.Config{
+		// Certificates: config.TLSConfig.Certificates, // This might be crypto/tls.Certificate, need conversion
+		// GetCertificate: config.TLSConfig.GetCertificate, // This might return crypto/tls.Certificate, need wrapping
+	}
+
+	// Manually copy fields and handle type conversion if necessary
+	// Assuming config.TLSConfig.Certificates is []crypto/tls.Certificate
+	if len(config.TLSConfig.Certificates) > 0 {
+		utlsConfig.Certificates = make([]utls.Certificate, len(config.TLSConfig.Certificates))
+		for i, cert := range config.TLSConfig.Certificates {
+			utlsConfig.Certificates[i] = utls.Certificate(cert) // Direct conversion
+		}
+	}
+
+	// Assuming config.TLSConfig.GetCertificate expects and returns crypto/tls types
+	if config.TLSConfig.GetCertificate != nil {
+		utlsConfig.GetCertificate = func(info *utls.ClientHelloInfo) (*utls.Certificate, error) {
+			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for the underlying GetCertificate
+			stdInfo := &tls.ClientHelloInfo{
+				CipherSuites:      info.CipherSuites,
+				ServerName:        info.ServerName,
+				SupportedCurves:   info.SupportedCurves,
+				SupportedPoints:   info.SupportedPoints,
+				SignatureSchemes:  info.SignatureSchemes,
+				SupportedVersions: info.SupportedVersions,
+				Conn:              info.Conn,
+			}
+			stdCert, err := config.TLSConfig.GetCertificate(stdInfo)
+			if err != nil {
+				return nil, err
+			}
+			// Convert crypto/tls.Certificate back to utls.Certificate
+			utlsCert := utls.Certificate(*stdCert)
+			return &utlsCert, nil
+		}
+	}
+
+	// Now pass the utlsConfig to http3.ConfigureTLSConfig
+	tlsConfig := http3.ConfigureTLSConfig(utlsConfig)
+
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
