@@ -372,27 +372,12 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 		}
 		// Use GetCertificate instead of Certificates so that
 		// users can update the cert without restarting the server.
-		// Wrap the crypto/tls.GetCertificate to return utls.Certificate
+		// `certLoader.GetCertificate` is assumed to be `utls`-aware.
 		hyConfig.TLSConfig.GetCertificate = func(utlsClientHello *utls.ClientHelloInfo) (*utls.Certificate, error) {
-			// Convert utls.ClientHelloInfo to crypto/tls.ClientHelloInfo for certLoader
-			stdClientHello := &tls.ClientHelloInfo{
-				Conn:       utlsClientHello.Conn,
-				ServerName: utlsClientHello.ServerName,
-				// copy other fields if certLoader's GetCertificate relies on them
-				// e.g., CipherSuites, SupportedCurves, SupportedPoints, SignatureSchemes, SupportedVersions, Certificates, Request
-			}
-			stdCert, err := certLoader.GetCertificate(stdClientHello)
+			// Directly call certLoader.GetCertificate, as it's assumed to handle utls types
+			utlsCert, err := certLoader.GetCertificate(utlsClientHello)
 			if err != nil {
 				return nil, err
-			}
-			if stdCert == nil {
-				return nil, nil
-			}
-			// Convert crypto/tls.Certificate to utls.Certificate
-			utlsCert := &utls.Certificate{
-				Certificate: stdCert.Certificate,
-				PrivateKey:  stdCert.PrivateKey,
-				Leaf:        stdCert.Leaf,
 			}
 			return utlsCert, nil
 		}
@@ -459,32 +444,32 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			switch strings.ToLower(c.ACME.DNS.Name) {
 			case "cloudflare":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &cloudflare.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &cloudflare.Provider{ // <-- Reverted to DNSProvider
 						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
 					},
 				}
 			case "duckdns":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &duckdns.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &duckdns.Provider{ // <-- Reverted to DNSProvider
 						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
 						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
 					},
 				}
 			case "gandi":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &gandi.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &gandi.Provider{ // <-- Reverted to DNSProvider
 						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
 					},
 				}
 			case "godaddy":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &godaddy.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &godaddy.Provider{ // <-- Reverted to DNSProvider
 						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
 					},
 				}
 			case "namedotcom":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &namedotcom.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &namedotcom.Provider{ // <-- Reverted to DNSProvider
 						Token:  c.ACME.DNS.Config["namedotcom_token"],
 						User:   c.ACME.DNS.Config["namedotcom_user"],
 						Server: c.ACME.DNS.Config["namedotcom_server"],
@@ -492,7 +477,7 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 				}
 			case "vultr":
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					Solver: &vultr.Provider{ // <-- Changed DNSProvider to Solver
+					DNSProvider: &vultr.Provider{ // <-- Reverted to DNSProvider
 						APIToken: c.ACME.DNS.Config["vultr_api_token"],
 					},
 				}
@@ -532,8 +517,14 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			stdClientHello := &tls.ClientHelloInfo{
 				Conn:       utlsClientHello.Conn,
 				ServerName: utlsClientHello.ServerName,
-				// Copy other fields if certmagic's GetCertificate relies on them
-				// e.g., CipherSuites, SupportedCurves, SupportedPoints, SignatureSchemes, SupportedVersions, Certificates, Request
+				// Copy other fields as needed
+				CipherSuites:      utlsClientHello.CipherSuites,
+				SupportedCurves:   utlsClientHello.SupportedCurves,
+				SupportedPoints:   utlsClientHello.SupportedPoints,
+				SignatureSchemes:  utlsClientHello.SignatureSchemes,
+				SupportedVersions: utlsClientHello.SupportedVersions,
+				Certificates:      utlsClientHello.Certificates,
+				Request:           utlsClientHello.Request,
 			}
 			stdCert, err := cmCfg.GetCertificate(stdClientHello)
 			if err != nil {
@@ -975,70 +966,13 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 	hyConfig.MasqHandler = &masqHandlerLogWrapper{H: handler, QUIC: true}
 
 	if c.Masquerade.ListenHTTP != "" || c.Masquerade.ListenHTTPS != "" {
-		if c.Masquerade.ListenHTTP != "" && c.Masquerade.ListenHTTPS == "" {
-			return configError{Field: "masquerade.listenHTTPS", Err: errors.New("having only HTTP server without HTTPS is not supported")}
-		}
-		// When initializing MasqTCPServer, ensure TLSConfig uses crypto/tls.Config
-		// as MasqTCPServer likely listens using standard net/http and crypto/tls.
-		// So we need to convert hyConfig.TLSConfig (*utls.Config) back to *crypto/tls.Config.
-		stdMasqTLSConfig := &tls.Config{
-			// Copy fields from hyConfig.TLSConfig (which is *utls.Config)
-			Certificates:   make([]tls.Certificate, len(hyConfig.TLSConfig.Certificates)),
-			GetCertificate: nil, // This will be set below
-			// No need to copy other fields unless explicitly required by masq.MasqTCPServer
-		}
-
-		// Convert utls.Certificate to crypto/tls.Certificate
-		for i, utlsCert := range hyConfig.TLSConfig.Certificates {
-			stdMasqTLSConfig.Certificates[i] = tls.Certificate{
-				Certificate: utlsCert.Certificate,
-				PrivateKey:  utlsCert.PrivateKey,
-				Leaf:        utlsCert.Leaf,
-			}
-		}
-
-		// If hyConfig.TLSConfig has a GetCertificate function,
-		// we need to wrap it to return crypto/tls.Certificate
-		if hyConfig.TLSConfig.GetCertificate != nil {
-			stdMasqTLSConfig.GetCertificate = func(stdClientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				// We need to convert stdClientHello (*crypto/tls.ClientHelloInfo) to *utls.ClientHelloInfo
-				// and then call hyConfig.TLSConfig.GetCertificate
-				// This is a reverse wrapper.
-				utlsClientHello := &utls.ClientHelloInfo{
-					Conn:       stdClientHello.Conn,
-					ServerName: stdClientHello.ServerName,
-					// Copy other fields as needed for hyConfig.TLSConfig.GetCertificate
-					// CipherSuites:      stdClientHello.CipherSuites,
-					// SupportedCurves:   stdClientHello.SupportedCurves,
-					// SupportedPoints:   stdClientHello.SupportedPoints,
-					// SignatureSchemes:  stdClientHello.SignatureSchemes,
-					// SupportedVersions: stdClientHello.SupportedVersions,
-					// Certificates:      stdClientHello.Certificates,
-					// Request:           stdClientHello.Request,
-				}
-				utlsCert, err := hyConfig.TLSConfig.GetCertificate(utlsClientHello)
-				if err != nil {
-					return nil, err
-				}
-				if utlsCert == nil {
-					return nil, nil
-				}
-				// Convert the returned utls.Certificate back to crypto/tls.Certificate
-				stdCert := &tls.Certificate{
-					Certificate: utlsCert.Certificate,
-					PrivateKey:  utlsCert.PrivateKey,
-					Leaf:        utlsCert.Leaf,
-				}
-				return stdCert, nil
-			}
-		}
-
-
+		// As per the error, masq.MasqTCPServer.TLSConfig expects *utls.Config.
+		// hyConfig.TLSConfig is already *utls.Config, so directly assign it.
 		s := masq.MasqTCPServer{
 			QUICPort:  extractPortFromAddr(hyConfig.Conn.LocalAddr().String()),
 			HTTPSPort: extractPortFromAddr(c.Masquerade.ListenHTTPS),
 			Handler:   &masqHandlerLogWrapper{H: handler, QUIC: false},
-			TLSConfig: stdMasqTLSConfig, // Use the converted standard TLS config
+			TLSConfig: hyConfig.TLSConfig, // <-- Directly assign hyConfig.TLSConfig
 			ForceHTTPS: c.Masquerade.ForceHTTPS,
 		}
 		go runMasqTCPServer(&s, c.Masquerade.ListenHTTP, c.Masquerade.ListenHTTPS)
