@@ -1,7 +1,7 @@
 package outbounds
 
 import (
-	"github.com/refraction-networking/utls"
+	"crypto/tls"
 	"net"
 	"time"
 
@@ -44,15 +44,19 @@ func NewStandardResolverTCP(addr string, timeout time.Duration, next PluggableOu
 }
 
 func NewStandardResolverTLS(addr string, timeout time.Duration, sni string, insecure bool, next PluggableOutbound) PluggableOutbound {
+	// 创建标准的 crypto/tls.Config 实例
+	stdTLSConfig := &tls.Config{
+		ServerName:         sni,
+		InsecureSkipVerify: insecure,
+		// 客户端通常不需要 Certificates 或 GetCertificate
+	}
+
 	return &standardResolver{
 		Addr: addDefaultPortTLS(addr),
 		Client: &dns.Client{
 			Net:     "tcp-tls",
 			Timeout: timeoutOrDefault(timeout),
-			TLSConfig: &tls.Config{
-				ServerName:         sni,
-				InsecureSkipVerify: insecure,
-			},
+			TLSConfig: stdTLSConfig, // 使用转换后的标准 TLS 配置
 		},
 		Next: next,
 	}
