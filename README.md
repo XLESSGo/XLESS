@@ -4,7 +4,7 @@ XLESS is a modern, highly obfuscated, and extremely secure proxy forwarding tool
 
 ## Features
 
-  - **Full-Link QUIC/HTTP/3 Support**: Ensures high efficiency, low latency, and cross-platform compatibility.
+  - **Full-Link uQUIC/HTTP/3 Support**: Ensures high efficiency, low latency, and cross-platform compatibility.
   - **Highly Obfuscated Authentication & Traffic**: Authentication requests can mimic any real website API, making all traffic appear as normal web behavior.
   - **Transparent Decoy/Front-End Reverse Proxy**: All unauthenticated traffic is transparently forwarded to a decoy, showing no proxy characteristics.
   - **Intelligent UDP/BBR/Bandwidth Detection**: Features smart congestion control and supports various transmission optimizations.
