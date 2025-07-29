@@ -9,7 +9,7 @@ require (
 	github.com/XLESSGo/XLESS/extras v0.0.0
 	github.com/XLESSGo/protean v0.0.0
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
-	github.com/caddyserver/certmagic v0.17.2
+	github.com/caddyserver/certmagic v0.22.1
 	github.com/libdns/cloudflare v0.1.1
 	github.com/libdns/duckdns v0.2.0
 	github.com/libdns/gandi v1.0.3
