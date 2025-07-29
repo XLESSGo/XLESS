@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
 	"go.uber.org/zap"
+	"github.com/XLESSGo/uquic"
 
 	"github.com/XLESSGo/XLESS/app/internal/utils"
 	"github.com/XLESSGo/XLESS/core/server"
@@ -74,6 +75,8 @@ type serverConfig struct {
 	TrafficStats          serverConfigTrafficStats    `mapstructure:"trafficStats"`
 	Masquerade            serverConfigMasquerade      `mapstructure:"masquerade"`
 	DecoyURL              string                      `mapstructure:"decoyURL"` // New field
+	EnableUQUIC           bool                        `mapstructure:"enableUQUIC"`   // 从 serverConfigQUIC 移到这里
+	UQUICSpecID           quic.QUICID                 `mapstructure:"uquicSpecID"` // 从 serverConfigQUIC 移到这里
 }
 
 // serverConfigObfs struct now directly embeds obfs.ObfuscatorConfig
@@ -283,6 +286,13 @@ func (c *serverConfig) fillConn(hyConfig *server.Config) error {
 	} else {
 		hyConfig.Conn = obfs.WrapPacketConn(conn, ob)
 	}
+	return nil
+}
+
+// 2. 修改 fillUQUICConfig 方法，直接赋值给 hyConfig
+func (c *serverConfig) fillUQUICConfig(hyConfig *server.Config) error {
+	hyConfig.EnableUQUIC = c.EnableUQUIC   // 直接赋值给 hyConfig
+	hyConfig.UQUICSpecID = c.UQUICSpecID // 直接赋值给 hyConfig
 	return nil
 }
 
@@ -1024,6 +1034,7 @@ func (c *serverConfig) Config() (*server.Config, error) {
 		c.fillTrafficLogger,
 		c.fillMasqHandler,
 		c.fillDecoyURL,
+		c.fillUQUICConfig, // 保持不变
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {

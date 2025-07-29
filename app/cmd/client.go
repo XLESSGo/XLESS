@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"github.com/XLESSGo/uquic"
 
 	"github.com/XLESSGo/XLESS/app/internal/forwarding"
 	"github.com/XLESSGo/XLESS/app/internal/http"
@@ -76,6 +77,8 @@ type clientConfig struct {
 	TCPRedirect   *tcpRedirectConfig    `mapstructure:"tcpRedirect"`
 	TUN           *tunConfig            `mapstructure:"tun"`
 	DecoyURL      string                `mapstructure:"decoyURL"` 
+	EnableUQUIC   bool                  `mapstructure:"enableUQUIC"`   // 从 clientConfigQUIC 移到这里
+	UQUICSpecID   quic.QUICID           `mapstructure:"uquicSpecID"` // 从 clientConfigQUIC 移到这里
 }
 
 type clientConfigTransportUDP struct {
@@ -257,6 +260,13 @@ func (c *clientConfig) fillAuth(hyConfig *client.Config) error {
 	return nil
 }
 
+// 2. 修改 fillUQUICConfig 方法，直接赋值给 hyConfig
+func (c *clientConfig) fillUQUICConfig(hyConfig *client.Config) error {
+	hyConfig.EnableUQUIC = c.EnableUQUIC   // 直接赋值给 hyConfig
+	hyConfig.UQUICSpecID = c.UQUICSpecID // 直接赋值给 hyConfig
+	return nil
+}
+
 func (c *clientConfig) fillTLSConfig(hyConfig *client.Config) error {
 	if c.TLS.SNI != "" {
 		hyConfig.TLSConfig.ServerName = c.TLS.SNI
@@ -426,6 +436,7 @@ func (c *clientConfig) Config() (*client.Config, error) {
 		c.fillBandwidthConfig,
 		c.fillFastOpen,
 		c.fillDecoyURL, 
+		c.fillUQUICConfig, // 新增
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
