@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
 	"go.uber.org/zap"
+	"github.com/XLESSGo/uquic"
 
 	"github.com/XLESSGo/XLESS/app/internal/utils"
 	"github.com/XLESSGo/XLESS/core/server"
