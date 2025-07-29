@@ -6,6 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/XLESSGo/uquic v0.0.0
+	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/goleak v1.2.1
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
@@ -24,7 +25,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/refraction-networking/clienthellod v0.5.0-alpha2 // indirect
-	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
