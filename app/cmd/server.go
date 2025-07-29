@@ -447,47 +447,59 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 			case "cloudflare":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &cloudflare.Provider{
-						APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &cloudflare.Provider{
+							APIToken: c.ACME.DNS.Config["cloudflare_api_token"],
+						},
+					}, // <-- 修改
 				}
 			case "duckdns":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &duckdns.Provider{
-						APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
-						OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &duckdns.Provider{
+							APIToken:       c.ACME.DNS.Config["duckdns_api_token"],
+							OverrideDomain: c.ACME.DNS.Config["duckdns_override_domain"],
+						},
+					}, // <-- 修改
 				}
 			case "gandi":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &gandi.Provider{
-						BearerToken: c.ACME.DNS.Config["gandi_api_token"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &gandi.Provider{
+							BearerToken: c.ACME.DNS.Config["gandi_api_token"],
+						},
+					}, // <-- 修改
 				}
 			case "godaddy":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &godaddy.Provider{
-						APIToken: c.ACME.DNS.Config["godaddy_api_token"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &godaddy.Provider{
+							APIToken: c.ACME.DNS.Config["godaddy_api_token"],
+						},
+					}, // <-- 修改
 				}
 			case "namedotcom":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &namedotcom.Provider{
-						Token:  c.ACME.DNS.Config["namedotcom_token"],
-						User:   c.ACME.DNS.Config["namedotcom_user"],
-						Server: c.ACME.DNS.Config["namedotcom_server"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &namedotcom.Provider{
+							Token:  c.ACME.DNS.Config["namedotcom_token"],
+							User:   c.ACME.DNS.Config["namedotcom_user"],
+							Server: c.ACME.DNS.Config["namedotcom_server"],
+						},
+					}, // <-- 修改
 				}
 			case "vultr":
 				// DNSProvider field exists according to provided solvers.go
 				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
-					DNSProvider: &vultr.Provider{
-						APIToken: c.ACME.DNS.Config["vultr_api_token"],
-					},
+					DNSManager: certmagic.DNSManager{ // <-- 修改
+						DNSProvider: &vultr.Provider{
+							APIToken: c.ACME.DNS.Config["vultr_api_token"],
+						},
+					}, // <-- 修改
 				}
 			default:
 				return configError{Field: "acme.dns.name", Err: errors.New("unsupported DNS provider")}
