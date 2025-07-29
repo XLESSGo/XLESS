@@ -10,7 +10,7 @@ import (
 	"github.com/XLESSGo/XLESS/core/errors"
 	"github.com/XLESSGo/XLESS/core/internal/pmtud"
 	"github.com/XLESSGo/XLESS/core/internal/utils"
-	"github.com/XLESSGo/uquic"
+	"github.com/apernet/quic-go"
 )
 
 const (
