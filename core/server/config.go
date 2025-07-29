@@ -1,7 +1,7 @@
 package server
 
 import (
-	utls "github.com/refraction-networking/utls"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"sync/atomic"
@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	defaultStreamReceiveWindow = 8388608
-	defaultConnReceiveWindow   = defaultStreamReceiveWindow * 5 / 2
+	defaultStreamReceiveWindow = 8388608                            // 8MB
+	defaultConnReceiveWindow   = defaultStreamReceiveWindow * 5 / 2 // 20MB
 	defaultMaxIdleTimeout      = 30 * time.Second
 	defaultMaxIncomingStreams  = 1024
 	defaultUDPIdleTimeout      = 60 * time.Second
@@ -36,11 +36,10 @@ type Config struct {
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
 	DecoyURL              string
-
-	EnableUQUIC           bool
-	UQUICSpecID           quic.QUICID // 类型必须是 quic.QUICID
 }
 
+// fill fills the fields that are not set by the user with default values when possible,
+// and returns an error if the user has not set a required field, or if a field is invalid.
 func (c *Config) fill() error {
 	if len(c.TLSConfig.Certificates) == 0 && c.TLSConfig.GetCertificate == nil {
 		return errors.ConfigError{Field: "TLSConfig", Reason: "must set at least one of Certificates or GetCertificate"}
@@ -96,17 +95,16 @@ func (c *Config) fill() error {
 	if c.Authenticator == nil {
 		return errors.ConfigError{Field: "Authenticator", Reason: "must be set"}
 	}
-	if c.EnableUQUIC && c.UQUICSpecID == (quic.QUICID{}) {
-		return errors.ConfigError{Field: "UQUICSpecID", Reason: "must be set if EnableUQUIC"}
-	}
 	return nil
 }
 
+// TLSConfig contains the TLS configuration fields that we want to expose to the user.
 type TLSConfig struct {
-	Certificates   []utls.Certificate
-	GetCertificate func(info *utls.ClientHelloInfo) (*utls.Certificate, error)
+	Certificates   []tls.Certificate
+	GetCertificate func(info *tls.ClientHelloInfo) (*tls.Certificate, error)
 }
 
+// QUICConfig contains the QUIC configuration fields that we want to expose to the user.
 type QUICConfig struct {
 	InitialStreamReceiveWindow     uint64
 	MaxStreamReceiveWindow         uint64
@@ -114,9 +112,8 @@ type QUICConfig struct {
 	MaxConnectionReceiveWindow     uint64
 	MaxIdleTimeout                 time.Duration
 	MaxIncomingStreams             int64
-	DisablePathMTUDiscovery        bool
+	DisablePathMTUDiscovery        bool // The server may still override this to true on unsupported platforms.
 }
-// 其它类型不变
 
 // RequestHook allows filtering and modifying requests before the server connects to the remote.
 // A request will only be hooked if Check returns true.
