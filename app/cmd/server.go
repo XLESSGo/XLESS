@@ -1066,26 +1066,4 @@ func extractPortFromAddr(addr string) int {
 	return port
 }
 
-// Dummy functions to satisfy the compiler for now
-var appACMEDirEnv string
-var disableUpdateCheck bool
 
-func envOrDefaultString(key, def string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
-	}
-	return def
-}
-
-func runCheckUpdateServer() {
-	// Dummy implementation
-}
-
-type configError struct {
-	Field string
-	Err   error
-}
-
-func (e configError) Error() string {
-	return fmt.Sprintf("config error in field '%s': %v", e.Field, e.Err)
-}
