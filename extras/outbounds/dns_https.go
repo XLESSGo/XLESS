@@ -1,7 +1,8 @@
 package outbounds
 
 import (
-	"github.com/refraction-networking/utls"
+	"crypto/tls" // <-- 添加这一行
+	utls "github.com/refraction-networking/utls" // 保持 utls 导入
 	"net"
 	"net/http"
 	"time"
@@ -17,11 +18,17 @@ type dohResolver struct {
 }
 
 func NewDoHResolver(host string, timeout time.Duration, sni string, insecure bool, next PluggableOutbound) PluggableOutbound {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = &tls.Config{
+	// 创建标准的 crypto/tls.Config 实例
+	stdTLSClientConfig := &tls.Config{
 		ServerName:         sni,
 		InsecureSkipVerify: insecure,
+		// 客户端通常不需要 Certificates 或 GetCertificate
+		// 其他字段可以根据需要从 utls.Config 复制，但对于客户端通常只有这些
 	}
+
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = stdTLSClientConfig // 使用转换后的标准 TLS 配置
+
 	return &dohResolver{
 		Resolver: &doh.Resolver{
 			Host:  host,
