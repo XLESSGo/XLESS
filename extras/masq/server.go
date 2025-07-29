@@ -2,7 +2,8 @@ package masq
 
 import (
 	"bufio"
-	"github.com/refraction-networking/utls"
+	"crypto/tls"
+	utls "github.com/refraction-networking/utls"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,7 +18,7 @@ type MasqTCPServer struct {
 	QUICPort   int
 	HTTPSPort  int
 	Handler    http.Handler
-	TLSConfig  *tls.Config
+	TLSConfig  *utls.Config
 	ForceHTTPS bool // Always 301 redirect from HTTP to HTTPS
 }
 
@@ -37,12 +38,86 @@ func (s *MasqTCPServer) ListenAndServeHTTP(addr string) error {
 }
 
 func (s *MasqTCPServer) ListenAndServeHTTPS(addr string) error {
+	var stdTLSConfig *tls.Config
+	if s.TLSConfig != nil {
+		stdTLSConfig = &tls.Config{
+			InsecureSkipVerify: s.TLSConfig.InsecureSkipVerify,
+			ServerName:         s.TLSConfig.ServerName,
+			MinVersion:         s.TLSConfig.MinVersion,
+			MaxVersion:         s.TLSConfig.MaxVersion,
+			CipherSuites:       s.TLSConfig.CipherSuites,
+			// Add other fields you might use from utls.Config that are also in crypto/tls.Config
+		}
+
+		// --- START FIX for Error 1: cannot convert cert (variable of struct type "github.com/refraction-networking/utls".Certificate) to type "crypto/tls".Certificate ---
+		if len(s.TLSConfig.Certificates) > 0 {
+			stdTLSConfig.Certificates = make([]tls.Certificate, len(s.TLSConfig.Certificates))
+			for i, utlsCertEntry := range s.TLSConfig.Certificates {
+				stdTLSConfig.Certificates[i] = tls.Certificate{
+					Certificate: utlsCertEntry.Certificate, // []byte
+					PrivateKey:  utlsCertEntry.PrivateKey,  // crypto.Signer
+					Leaf:        utlsCertEntry.Leaf,        // *x509.Certificate
+					// Copy other relevant fields if they exist and are exported in both structs
+					// For most basic use cases, these three are sufficient.
+				}
+			}
+		}
+		// --- END FIX ---
+
+		if s.TLSConfig.GetCertificate != nil {
+			stdTLSConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				utlsSupportedCurves := make([]utls.CurveID, len(info.SupportedCurves))
+				for i, c := range info.SupportedCurves {
+					utlsSupportedCurves[i] = utls.CurveID(c)
+				}
+
+				utlsSupportedPoints := make([]uint8, len(info.SupportedPoints))
+				for i, p := range info.SupportedPoints {
+					utlsSupportedPoints[i] = uint8(p)
+				}
+
+				utlsSignatureSchemes := make([]utls.SignatureScheme, len(info.SignatureSchemes))
+				for i, s := range info.SignatureSchemes {
+					utlsSignatureSchemes[i] = utls.SignatureScheme(s)
+				}
+
+				utlsInfo := &utls.ClientHelloInfo{
+					CipherSuites:      info.CipherSuites,
+					ServerName:        info.ServerName,
+					SupportedCurves:   utlsSupportedCurves,
+					SupportedPoints:   utlsSupportedPoints,
+					SignatureSchemes:  utlsSignatureSchemes,
+					SupportedVersions: info.SupportedVersions,
+					Conn:              info.Conn,
+				}
+
+				utlsCert, err := s.TLSConfig.GetCertificate(utlsInfo)
+				if err != nil {
+					return nil, err
+				}
+
+				// --- START FIX for Error 2: cannot convert *utlsCert (...) to type "crypto/tls".Certificate ---
+				if utlsCert == nil {
+					return nil, nil
+				}
+				stdCert := tls.Certificate{
+					Certificate: utlsCert.Certificate,
+					PrivateKey:  utlsCert.PrivateKey,
+					Leaf:        utlsCert.Leaf,
+					// Copy other relevant fields if they exist and are exported
+				}
+				return &stdCert, nil
+				// --- END FIX ---
+			}
+		}
+	}
+
 	server := &http.Server{
 		Addr: addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			s.Handler.ServeHTTP(newAltSvcHijackResponseWriter(w, s.QUICPort), r)
 		}),
-		TLSConfig: s.TLSConfig,
+		TLSConfig: stdTLSConfig,
 	}
 	listener, err := correctnet.Listen("tcp", addr)
 	if err != nil {

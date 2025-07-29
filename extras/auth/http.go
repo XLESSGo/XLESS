@@ -2,7 +2,7 @@ package auth
 
 import (
 	"bytes"
-	"github.com/refraction-networking/utls"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -27,10 +27,15 @@ type HTTPAuthenticator struct {
 }
 
 func NewHTTPAuthenticator(url string, insecure bool) *HTTPAuthenticator {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = &tls.Config{
+	// 创建标准的 crypto/tls.Config 实例
+	stdTLSClientConfig := &tls.Config{
 		InsecureSkipVerify: insecure,
+		// 客户端通常不需要 Certificates 或 GetCertificate
 	}
+
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = stdTLSClientConfig // 使用转换后的标准 TLS 配置
+
 	return &HTTPAuthenticator{
 		Client: &http.Client{
 			Transport: tr,
