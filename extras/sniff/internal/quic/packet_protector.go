@@ -5,7 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -173,7 +173,7 @@ func decodePacketNumber(largest, truncated int64, nbits uint8) int64 {
 	return candidate
 }
 
-// Copied from crypto/tls/key_schedule.go.
+// Copied from github.com/refraction-networking/utls/key_schedule.go.
 func hkdfExpandLabel(hash func() hash.Hash, secret []byte, label string, context []byte, length int) []byte {
 	var hkdfLabel cryptobyte.Builder
 	hkdfLabel.AddUint16(uint16(length))

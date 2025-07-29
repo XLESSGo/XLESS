@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"crypto/x509"
 	"fmt"
 	"net"

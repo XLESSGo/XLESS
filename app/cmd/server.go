@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"encoding/json"
 	"errors"
 	"fmt"

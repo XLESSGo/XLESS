@@ -2,7 +2,7 @@ package auth
 
 import (
 	"bytes"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"encoding/json"
 	"errors"
 	"io"

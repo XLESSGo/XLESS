@@ -2,7 +2,7 @@ package masq
 
 import (
 	"bufio"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"fmt"
 	"net"
 	"net/http"

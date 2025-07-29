@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"log"
 	"net/http"
 	"os"

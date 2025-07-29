@@ -3,7 +3,7 @@ package quic
 import (
 	"bytes"
 	"crypto"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"encoding/hex"
 	"strings"
 	"testing"

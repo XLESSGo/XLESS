@@ -3,7 +3,7 @@ package outbounds
 import (
 	"bufio"
 	"bytes"
-	"crypto/tls"
+	"github.com/refraction-networking/utls"
 	"encoding/base64"
 	"errors"
 	"fmt"
