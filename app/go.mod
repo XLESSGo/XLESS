@@ -24,7 +24,7 @@ require (
 	github.com/libdns/regfish v0.0.0-20250710113612-8b64bd89b1ca
 	github.com/libdns/scaleway v0.2.2
 	github.com/libdns/tencentcloud v1.4.2
-	github.com/libdns/vultr v1.0.0
+	github.com/libdns/vultr v2.0.0
 	github.com/mdp/qrterminal/v3 v3.1.1
 	github.com/mholt/acmez/v3 v3.1.1
 	github.com/refraction-networking/utls v1.6.6
