@@ -37,30 +37,6 @@ type Server interface {
 	Close() error
 }
 
-package server
-
-import (
-	"context"
-	"crypto/tls" // Standard TLS library
-	"encoding/json"
-	"io"
-	"math/rand"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
-
-	"github.com/XLESSGo/uquic"
-	"github.com/XLESSGo/uquic/http3"
-	utls "github.com/refraction-networking/utls" // utls library, aliased for clarity
-
-	"github.com/XLESSGo/XLESS/core/internal/congestion"
-	"github.com/XLESSGo/XLESS/core/internal/protocol"
-	"github.com/XLESSGo/XLESS/core/internal/utils"
-)
-
-// ... (previous code remains the same until NewServer)
-
 func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
