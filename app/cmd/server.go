@@ -23,7 +23,7 @@ import (
 	"github.com/libdns/godaddy"
 	"github.com/libdns/namedotcom"
 	"github.com/libdns/vultr"
-	acmev2 "github.com/mholt/acmez/v2/acme" // <-- Ensure acmez/v2/acme is used
+	acmev2 "github.com/mholt/acmez/v3/acme" // <-- Ensure acmez/v2/acme is used
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	protean "github.com/XLESSGo/protean"
