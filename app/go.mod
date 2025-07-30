@@ -9,6 +9,7 @@ require (
 	github.com/XLESSGo/XLESS/extras v0.0.0
 	github.com/XLESSGo/protean v0.0.0
 	github.com/XLESSGo/uquic v0.0.0
+	github.com/XLESSGo/water v0.0.0
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/caddyserver/certmagic v0.22.1
 	github.com/libdns/cloudflare v0.1.1
@@ -20,7 +21,6 @@ require (
 	github.com/mdp/qrterminal/v3 v3.1.1
 	github.com/mholt/acmez/v3 v3.1.1
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
-	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.10.0
@@ -82,6 +82,7 @@ require (
 	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
+	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
