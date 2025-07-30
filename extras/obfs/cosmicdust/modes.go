@@ -2,12 +2,13 @@ package cosmicdust
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"math"
 	mrand "math/rand"
 	"strconv"
-	"strings"
 	"time"
 )
 
