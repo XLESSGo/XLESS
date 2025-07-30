@@ -1,11 +1,7 @@
-github.com/XLESSGo/XLESS/core v0.0.0-20250724143135-0a316cc69029 h1:Iz26XQuS5MfFcJsfa6kEudVZrNPLKakZeUp/fdADWCQ=
-github.com/XLESSGo/XLESS/core v0.0.0-20250724143135-0a316cc69029/go.mod h1:lQnldgWm8CoiFUCXoV71KRnm/f8MnR1aNWpQrSjJfb4=
 github.com/XLESSGo/uquic v0.0.0 h1:Kd9HY23zHwCakSigfTSmiq2ivkwstxxzBpP+4jBMH+U=
 github.com/XLESSGo/uquic v0.0.0/go.mod h1:WeCSaUe/qvvPHhofkcyl2bifZ5J1QNRuCAIp/WJq+c8=
 github.com/andybalholm/brotli v1.1.1 h1:PR2pgnyFznKEugtsUo0xLdDop5SKXd5Qf5ysW+7XdTA=
 github.com/andybalholm/brotli v1.1.1/go.mod h1:05ib4cKhjx3OQYUY22hTVd34Bc8upXjOLL2rKwwZBoA=
-github.com/apernet/quic-go v0.52.1-0.20250607183305-9320c9d14431 h1:9/jM7e+kVALd7Jfu1c27dcEpT/Fd/Gzq2OsQjKjakKI=
-github.com/apernet/quic-go v0.52.1-0.20250607183305-9320c9d14431/go.mod h1:I/47OIGG5H/IfAm+nz2c6hm6b/NkEhpvptAoiPcY7jQ=
 github.com/babolivier/go-doh-client v0.0.0-20201028162107-a76cff4cb8b6 h1:4NNbNM2Iq/k57qEu7WfL67UrbPq1uFWxW4qODCohi+0=
 github.com/babolivier/go-doh-client v0.0.0-20201028162107-a76cff4cb8b6/go.mod h1:J29hk+f9lJrblVIfiJOtTFk+OblBawmib4uz/VdKzlg=
 github.com/cloudflare/circl v1.6.1 h1:zqIqSPIndyBh1bjLVVDHMPpVKqp8Su/V+6MeDzzQBQ0=
