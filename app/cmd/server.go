@@ -23,6 +23,15 @@ import (
 	"github.com/libdns/godaddy"
 	"github.com/libdns/namedotcom"
 	"github.com/libdns/vultr"
+	"github.com/libdns/dnsimple"      // 新增
+	"github.com/libdns/powerdns"      // 新增
+	"github.com/libdns/dynu"          // 新增
+	"github.com/libdns/tencentcloud"   // 新增 (通常对应DNSPod)
+	"github.com/libdns/bunny"         // 新增
+	"github.com/libdns/scaleway"      // 新增
+	"github.com/libdns/inwx"          // 新增
+	"github.com/libdns/hexonet"       // 新增
+	"github.com/libdns/regfish" 
 	acmev2 "github.com/mholt/acmez/v3/acme" // <-- Ensure acmez/v2/acme is used
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -510,6 +519,85 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 							APIToken: c.ACME.DNS.Config["vultr_api_token"],
 						},
 					}, // <-- 修改
+				}
+			case "dnsimple": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &dnsimple.Provider{
+							APIToken: c.ACME.DNS.Config["dnsimple_api_token"],
+							AccountID: c.ACME.DNS.Config["dnsimple_account_id"],
+						},
+					},
+				}
+			case "powerdns": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &powerdns.Provider{
+							APIToken: c.ACME.DNS.Config["powerdns_api_token"],
+							APIEndpoint: c.ACME.DNS.Config["powerdns_api_endpoint"],
+						},
+					},
+				}
+			case "dynu": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &dynu.Provider{
+							APIToken: c.ACME.DNS.Config["dynu_api_token"],
+						},
+					},
+				}
+			case "tencentcloud": // 新增示例 (通常作为DNSPod)
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &tencentcloud.Provider{
+							SecretID:  c.ACME.DNS.Config["tencentcloud_secret_id"],
+							SecretKey: c.ACME.DNS.Config["tencentcloud_secret_key"],
+						},
+					},
+				}
+			case "bunny": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &bunny.Provider{
+							APIToken: c.ACME.DNS.Config["bunny_api_token"],
+						},
+					},
+				}
+			case "scaleway": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &scaleway.Provider{
+							SecretKey: c.ACME.DNS.Config["scaleway_secret_key"],
+							ProjectID: c.ACME.DNS.Config["scaleway_project_id"],
+						},
+					},
+				}
+			case "inwx": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &inwx.Provider{
+							Username: c.ACME.DNS.Config["inwx_username"],
+							Password: c.ACME.DNS.Config["inwx_password"],
+						},
+					},
+				}
+			case "hexonet": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &hexonet.Provider{
+							Username: c.ACME.DNS.Config["hexonet_username"],
+							Password: c.ACME.DNS.Config["hexonet_password"],
+						},
+					},
+				}
+			case "regfish": // 新增示例
+				cmIssuer.DNS01Solver = &certmagic.DNS01Solver{
+					DNSManager: certmagic.DNSManager{
+						DNSProvider: &regfish.Provider{
+							Username: c.ACME.DNS.Config["regfish_username"],
+							Password: c.ACME.DNS.Config["regfish_password"],
+						},
+					},
 				}
 			default:
 				return configError{Field: "acme.dns.name", Err: errors.New("unsupported DNS provider")}
