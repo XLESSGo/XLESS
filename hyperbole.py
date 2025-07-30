@@ -43,7 +43,7 @@ BUILD_CONFIG = {
     "CORE_SRC_DIR": "./core",
     "EXTRAS_SRC_DIR": "./extras",
     "APP_SRC_DIR": "./app",
-    "APP_SRC_CMD_PKG": "github.com/XLESSGo/XLESS/app/v2/cmd",
+    "APP_SRC_CMD_PKG": "github.com/XLESSGo/XLESS/app/cmd",
     "MODULE_SRC_DIRS": ["./core", "./extras", "./app"],
     "ARCH_ALIASES": {
         "arm": {"GOARCH": "arm", "GOARM": "7"},
