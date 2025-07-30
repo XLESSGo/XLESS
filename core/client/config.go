@@ -17,6 +17,9 @@ const (
 	defaultKeepAlivePeriod     = 10 * time.Second
 )
 
+const (
+	ProtocolTypeDefault  ProtocolType = "default" // 默认协议类型
+
 type Config struct {
 	ConnFactory     ConnFactory
 	ServerAddr      net.Addr
@@ -26,8 +29,8 @@ type Config struct {
 	BandwidthConfig BandwidthConfig
 	FastOpen        bool
 	DecoyURL        string
-	Protocol      string
-	ProtocolParam string
+	Protocol        ProtocolType
+	ProtocolParam   string
 	EnableUQUIC     bool
 	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
 
