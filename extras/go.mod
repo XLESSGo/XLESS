@@ -21,7 +21,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
-	github.com/apernet/quic-go v0.52.1-0.20250607183305-9320c9d14431 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
