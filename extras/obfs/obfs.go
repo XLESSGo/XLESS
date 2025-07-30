@@ -42,19 +42,11 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return NewPolyMorphObfuscator([]byte(cfg.Password))
 	case "timewarp":
 		return NewTimeWarpObfuscator([]byte(cfg.Password))
-	case "quantumtunnel":
-		return NewQuantumTunnelObfuscator([]byte(cfg.Password))
-	case "astro":
-		return NewAstroObfuscator([]byte(cfg.Password))
 	case "nebula":
 		return NewNebulaObfuscator([]byte(cfg.Password))
 	case "cosmos":
 		// Use the NewCosmosObfuscator from the new cosmos package
 		return cosmos.NewCosmosObfuscator([]byte(cfg.Password))
-	case "stealthflow":
-		// For StealthFlow, we'll use the password as the base for key derivation.
-		// More complex configurations (e.g., specific fake hosts) could be added to ObfuscatorConfig.
-		return NewStealthFlowObfuscator([]byte(cfg.Password))
 	case "quantumshuffle":
 		// For QuantumShuffle, the password is also used for key derivation and randomness seeding.
 		return NewQuantumShuffleObfuscator([]byte(cfg.Password))
