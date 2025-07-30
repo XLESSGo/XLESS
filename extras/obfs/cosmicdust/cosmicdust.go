@@ -189,13 +189,15 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 	currentParseOffset := 0
 	var processedAnySegment bool = false
 
-	// Declare variables outside the loop to avoid "goto jumps over declaration" error
+	// Declare all variables that might be jumped over by 'goto' outside the loop
 	var (
-		segmentStateToken           []byte
-		segmentNonce                []byte
+		segmentStateToken       []byte
+		segmentNonce            []byte
 		encryptedSegmentPayload []byte
-		consumedBytes               int
-		err                         error
+		consumedBytes           int
+		err                     error
+		aesgcm                  cipher.AEAD // Declare aesgcm here
+		decryptedSegmentPayload []byte      // Declare decryptedSegmentPayload here
 	)
 
 	for currentParseOffset < len(in) {
@@ -205,6 +207,8 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		for mode := 0; mode < NumDisguiseModes; mode++ {
 			segmentData := in[segmentStart:]
 			
+			// Reset error for each mode attempt
+			err = nil 
 			switch mode {
 			case ModeTLSAppData:
 				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeTLSAppData(segmentData)
@@ -271,11 +275,13 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		if err != nil {
 			return 0
 		}
-		aesgcm, err := cipher.NewGCM(block)
+		// Assign to the already declared aesgcm variable
+		aesgcm, err = cipher.NewGCM(block)
 		if err != nil {
 			return 0
 		}
 
+		// Assign to the already declared decryptedSegmentPayload variable
 		decryptedSegmentPayload, err = aesgcm.Open(nil, segmentNonce, encryptedSegmentPayload, nil)
 		if err != nil {
 			return 0
@@ -293,7 +299,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		o.currentReassembledSize[packetID] += len(decryptedSegmentPayload)
 		processedAnySegment = true
 
-	NextSegment:
+	NextSegment: // This label must be after all declarations it might jump over
 	}
 	
 	if processedAnySegment {
