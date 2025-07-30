@@ -11,18 +11,18 @@ import (
 )
 
 const (
-	MinPSKLen          = 64
-	NonceLen           = 12
-	TagLen             = 16
-	AESKeyLen          = 32
-	HMACKeyLen         = 32
-	HMACSize           = 32
-	SequenceNumLen     = 8
-	CumulativeHashLen  = 32
+	MinPSKLen          = 64
+	NonceLen           = 12
+	TagLen             = 16
+	AESKeyLen          = 32
+	HMACKeyLen         = 32
+	HMACSize           = 32
+	SequenceNumLen     = 8
+	CumulativeHashLen  = 32
 
-	SegmentIDLen       = 8
-	SegmentIndexLen    = 2
-	TotalSegmentsLen   = 2
+	SegmentIDLen       = 8
+	SegmentIndexLen    = 2
+	TotalSegmentsLen   = 2
 	EncryptedPayloadLenBytes = 2
 	SegmentMetadataLen = SegmentIDLen + SegmentIndexLen + TotalSegmentsLen + EncryptedPayloadLenBytes
 	SegmentStateTokenLen = SegmentMetadataLen + HMACSize
@@ -46,7 +46,7 @@ var _ Obfuscator = (*CosmicDustObfuscator)(nil)
 type CosmicDustObfuscator struct {
 	PSK []byte
 
-	lk           sync.Mutex
+	lk             sync.Mutex
 	sendPacketID uint64
 	recvPacketID uint64
 
@@ -70,12 +70,12 @@ func NewCosmicDustObfuscator(psk []byte) (Obfuscator, error) {
 	}
 
 	return &CosmicDustObfuscator{
-		PSK:                psk,
-		sendPacketID:       1,
-		recvPacketID:       1,
+		PSK:                  psk,
+		sendPacketID:         1,
+		recvPacketID:         1,
 		cumulativeStateHash: initialHash,
-		randSrc:            mrand.New(mrand.NewSource(time.Now().UnixNano())),
-		recvBuffer:         make(map[uint64]map[uint16][]byte),
+		randSrc:              mrand.New(mrand.NewSource(time.Now().UnixNano())),
+		recvBuffer:           make(map[uint64]map[uint16][]byte),
 		expectedTotalSegments: make(map[uint64]uint16),
 		currentReassembledSize: make(map[uint64]int),
 	}, nil
@@ -191,11 +191,11 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 
 	// Declare variables outside the loop to avoid "goto jumps over declaration" error
 	var (
-		segmentStateToken       []byte
-		segmentNonce            []byte
+		segmentStateToken           []byte
+		segmentNonce                []byte
 		encryptedSegmentPayload []byte
-		consumedBytes           int
-		err                     error
+		consumedBytes               int
+		err                         error
 	)
 
 	for currentParseOffset < len(in) {
