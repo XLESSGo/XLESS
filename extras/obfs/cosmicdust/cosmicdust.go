@@ -189,28 +189,31 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 	currentParseOffset := 0
 	var processedAnySegment bool = false
 
-	// Declare all variables that might be jumped over by 'goto' outside the loop
+	// Declare all variables that might be used across different branches or loops
 	var (
 		segmentStateToken       []byte
 		segmentNonce            []byte
 		encryptedSegmentPayload []byte
 		consumedBytes           int
 		err                     error
-		block                   cipher.Block // Declare block here
+		aesKey                  []byte
+		block                   cipher.Block
 		aesgcm                  cipher.AEAD
-		aesKey                  []byte // 在这里添加 aesKey 的声明
 		decryptedSegmentPayload []byte
+		verified                bool
 	)
 
 	for currentParseOffset < len(in) {
 		segmentStart := currentParseOffset
 		
 		foundMatch := false
+		isDecoySegment := false // Flag to explicitly mark if it's a decoy
+
+		// Try to deobfuscate using various modes
 		for mode := 0; mode < NumDisguiseModes; mode++ {
 			segmentData := in[segmentStart:]
-			
-			// Reset error for each mode attempt
-			err = nil 
+			err = nil // Reset error for each mode attempt
+
 			switch mode {
 			case ModeTLSAppData:
 				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeTLSAppData(segmentData)
@@ -221,34 +224,39 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 			case ModeNTPRequest:
 				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeNTPRequest(segmentData)
 			case ModeDecoy:
-				isDecoy, decoyErr := DeobfuscateModeDecoy(o.PSK, o.cumulativeStateHash, segmentData)
-				if isDecoy && decoyErr == nil {
+				var decoyErr error
+				isDecoySegment, decoyErr = DeobfuscateModeDecoy(o.PSK, o.cumulativeStateHash, segmentData)
+				if isDecoySegment && decoyErr == nil {
 					// For decoy, we need to know how many bytes it consumed.
 					// This is a heuristic, as decoy length is variable.
 					// A robust decoy should embed its length.
-					// For now, assume it consumes up to decoyMaxTotalLen or end of 'in'.
-					consumedBytes = min(len(segmentData), decoyMaxTotalLen)
-					currentParseOffset += consumedBytes
-					foundMatch = true
-					processedAnySegment = true
-					goto NextSegment
+					consumedBytes = min(len(segmentData), decoyMaxTotalLen) // Assuming decoyMaxTotalLen is defined
+					foundMatch = true // A decoy is a match, but processed differently
+					break // Break from mode loop, handle decoy outside
 				}
-				continue
+				continue // Not a valid decoy for this segment, try next mode
 			default:
 				continue
 			}
 
 			if err == nil {
 				foundMatch = true
-				break
+				break // Found a valid non-decoy segment, break from mode loop
 			}
 		}
 
 		if !foundMatch {
-			return 0
+			return 0 // No matching segment type found
 		}
 
-		// Advance offset for non-decoy packets
+		// Handle decoy segments
+		if isDecoySegment {
+			currentParseOffset += consumedBytes
+			processedAnySegment = true
+			continue // Continue to the next segment in the input 'in'
+		}
+
+		// If not a decoy, proceed with normal segment processing
 		currentParseOffset += consumedBytes
 
 		packetID, segmentIndex, totalSegments, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
@@ -264,7 +272,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 			return 0
 		}
 
-		verified, err := VerifySegmentStateToken(o.PSK, packetID, segmentIndex, totalSegments, encryptedPayloadLen, o.cumulativeStateHash, segmentStateToken, encryptedSegmentPayload)
+		verified, err = VerifySegmentStateToken(o.PSK, packetID, segmentIndex, totalSegments, encryptedPayloadLen, o.cumulativeStateHash, segmentStateToken, encryptedSegmentPayload)
 		if err != nil || !verified {
 			return 0
 		}
@@ -273,18 +281,15 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		if err != nil {
 			return 0
 		}
-		// Assign to the already declared block variable
 		block, err = aes.NewCipher(aesKey)
 		if err != nil {
 			return 0
 		}
-		// Assign to the already declared aesgcm variable
 		aesgcm, err = cipher.NewGCM(block)
 		if err != nil {
 			return 0
 		}
 
-		// Assign to the already declared decryptedSegmentPayload variable
 		decryptedSegmentPayload, err = aesgcm.Open(nil, segmentNonce, encryptedSegmentPayload, nil)
 		if err != nil {
 			return 0
@@ -301,8 +306,6 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		o.recvBuffer[packetID][segmentIndex] = decryptedSegmentPayload
 		o.currentReassembledSize[packetID] += len(decryptedSegmentPayload)
 		processedAnySegment = true
-
-	NextSegment: // This label must be after all declarations it might jump over
 	}
 	
 	if processedAnySegment {
