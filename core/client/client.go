@@ -54,7 +54,7 @@ func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	var p protocol_ext.Protocol
 	if config.Protocol != "" && config.Protocol != "plain" && config.Protocol != "origin" {
 		var err error
-		p, err = protocol_ext.NewProtocol(config.Protocol, config.ProtocolParam)
+		p, err = protocol_ext.NewProtocol(string(config.Protocol), config.ProtocolParam)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to load protocol plugin %q: %w", config.Protocol, err)
 		}
