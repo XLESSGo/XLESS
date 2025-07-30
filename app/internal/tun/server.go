@@ -6,7 +6,7 @@ import (
 	"net"
 	"go.uber.org/zap"
 
-	"github.com/songgao/water"
+	"github.com/XLESSGo/water"
 )
 
 type Server struct {
