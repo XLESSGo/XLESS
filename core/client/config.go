@@ -26,8 +26,8 @@ type Config struct {
 	BandwidthConfig BandwidthConfig
 	FastOpen        bool
 	DecoyURL        string
-
-	
+	Protocol      string
+	ProtocolParam string
 	EnableUQUIC     bool
 	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
 
