@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/XLESSGo/uquic" // 假设需要 QUIC 类型用于上下文
+	uquic "github.com/XLESSGo/uquic" // 假设需要 QUIC 类型用于上下文
 )
 
 // ====================================================================
