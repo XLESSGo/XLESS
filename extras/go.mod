@@ -47,4 +47,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/apernet/hysteria/core/v2 => ../core
+replace github.com/XLESSGo/XLESS/core => ../core
