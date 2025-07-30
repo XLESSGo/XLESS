@@ -198,6 +198,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		err                     error
 		block                   cipher.Block // Declare block here
 		aesgcm                  cipher.AEAD
+		aesKey                  []byte // 在这里添加 aesKey 的声明
 		decryptedSegmentPayload []byte
 	)
 
@@ -268,7 +269,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 			return 0
 		}
 
-		aesKey, err := DeriveAESKey(o.PSK, packetID, segmentIndex, o.cumulativeStateHash)
+		aesKey, err = DeriveAESKey(o.PSK, packetID, segmentIndex, o.cumulativeStateHash)
 		if err != nil {
 			return 0
 		}
