@@ -3,7 +3,6 @@ package obfs
 import (
 	"fmt"
 
-	cosmos "github.com/XLESSGo/XLESS/extras/obfs/cosmos"
 	hypernova "github.com/XLESSGo/XLESS/extras/obfs/hypernova"
 	cosmicdust "github.com/XLESSGo/XLESS/extras/obfs/cosmicdust"
 )
@@ -44,9 +43,6 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return NewTimeWarpObfuscator([]byte(cfg.Password))
 	case "nebula":
 		return NewNebulaObfuscator([]byte(cfg.Password))
-	case "cosmos":
-		// Use the NewCosmosObfuscator from the new cosmos package
-		return cosmos.NewCosmosObfuscator([]byte(cfg.Password))
 	case "quantumshuffle":
 		// For QuantumShuffle, the password is also used for key derivation and randomness seeding.
 		return NewQuantumShuffleObfuscator([]byte(cfg.Password))
