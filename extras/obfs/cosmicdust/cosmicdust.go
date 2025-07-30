@@ -11,18 +11,18 @@ import (
 )
 
 const (
-	MinPSKLen          = 64
-	NonceLen           = 12
-	TagLen             = 16
-	AESKeyLen          = 32
-	HMACKeyLen         = 32
-	HMACSize           = 32
-	SequenceNumLen     = 8
-	CumulativeHashLen  = 32
+	MinPSKLen          = 64
+	NonceLen           = 12
+	TagLen             = 16
+	AESKeyLen          = 32
+	HMACKeyLen         = 32
+	HMACSize           = 32
+	SequenceNumLen     = 8
+	CumulativeHashLen  = 32
 
-	SegmentIDLen       = 8
-	SegmentIndexLen    = 2
-	TotalSegmentsLen   = 2
+	SegmentIDLen       = 8
+	SegmentIndexLen    = 2
+	TotalSegmentsLen   = 2
 	EncryptedPayloadLenBytes = 2
 	SegmentMetadataLen = SegmentIDLen + SegmentIndexLen + TotalSegmentsLen + EncryptedPayloadLenBytes
 	SegmentStateTokenLen = SegmentMetadataLen + HMACSize
@@ -46,7 +46,7 @@ var _ Obfuscator = (*CosmicDustObfuscator)(nil)
 type CosmicDustObfuscator struct {
 	PSK []byte
 
-	lk           sync.Mutex
+	lk           sync.Mutex
 	sendPacketID uint64
 	recvPacketID uint64
 
@@ -70,12 +70,12 @@ func NewCosmicDustObfuscator(psk []byte) (Obfuscator, error) {
 	}
 
 	return &CosmicDustObfuscator{
-		PSK:                psk,
-		sendPacketID:       1,
-		recvPacketID:       1,
+		PSK:                psk,
+		sendPacketID:       1,
+		recvPacketID:       1,
 		cumulativeStateHash: initialHash,
-		randSrc:            mrand.New(mrand.NewSource(time.Now().UnixNano())),
-		recvBuffer:         make(map[uint64]map[uint16][]byte),
+		randSrc:            mrand.New(mrand.NewSource(time.Now().UnixNano())),
+		recvBuffer:         make(map[uint64]map[uint16][]byte),
 		expectedTotalSegments: make(map[uint64]uint16),
 		currentReassembledSize: make(map[uint64]int),
 	}, nil
@@ -189,17 +189,18 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 	currentParseOffset := 0
 	var processedAnySegment bool = false
 
+	// Declare variables outside the loop to avoid "goto jumps over declaration" error
+	var (
+		segmentStateToken       []byte
+		segmentNonce            []byte
+		encryptedSegmentPayload []byte
+		consumedBytes           int
+		err                     error
+	)
+
 	for currentParseOffset < len(in) {
 		segmentStart := currentParseOffset
 		
-		var (
-			segmentStateToken       []byte
-			segmentNonce            []byte
-			encryptedSegmentPayload []byte
-			consumedBytes           int
-			err                     error
-		)
-
 		foundMatch := false
 		for mode := 0; mode < NumDisguiseModes; mode++ {
 			segmentData := in[segmentStart:]
@@ -275,7 +276,7 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 			return 0
 		}
 
-		decryptedSegmentPayload, err := aesgcm.Open(nil, segmentNonce, encryptedSegmentPayload, nil)
+		decryptedSegmentPayload, err = aesgcm.Open(nil, segmentNonce, encryptedSegmentPayload, nil)
 		if err != nil {
 			return 0
 		}
