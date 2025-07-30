@@ -89,6 +89,6 @@ require (
 	rsc.io/qr v0.2.0 // indirect
 )
 
-replace github.com/apernet/hysteria/core/v2 => ../core
+replace github.com/XLESSGo/XLESS/core => ../core
 
-replace github.com/apernet/hysteria/extras/v2 => ../extras
+replace github.com/XLESSGo/XLESS/extras => ../extras
