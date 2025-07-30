@@ -21,6 +21,13 @@ const (
 	defaultUDPIdleTimeout      = 60 * time.Second
 )
 
+// ProtocolType 定义了客户端支持的协议类型
+type ProtocolType string
+
+const (
+	ProtocolTypeDefault  ProtocolType = "default" // 默认协议类型
+)
+
 type Config struct {
 	TLSConfig             TLSConfig
 	QUICConfig            QUICConfig
@@ -36,7 +43,7 @@ type Config struct {
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
 	DecoyURL              string
-	Protocol      string
+	Protocol      ProtocolType
 	ProtocolParam string
 	EnableUQUIC           bool
 	UQUICSpecID           quic.QUICID // 类型必须是 quic.QUICID
