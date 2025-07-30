@@ -17,6 +17,9 @@ const (
 	defaultKeepAlivePeriod     = 10 * time.Second
 )
 
+// ProtocolType 定义了客户端支持的协议类型
+type ProtocolType string
+
 const (
 	ProtocolTypeDefault  ProtocolType = "default" // 默认协议类型
 )
