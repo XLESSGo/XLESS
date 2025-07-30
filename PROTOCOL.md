@@ -1,6 +1,6 @@
 # XLESS Protocol Specification
 
-XLESS is a TCP and UDP proxy protocol built on QUIC, designed to provide speed, security, and censorship resistance. This document describes the protocol used by XLESS starting from version 1.0.0. From now on, we will refer to it as "the protocol" or "the XLESS protocol."
+XLESS is a TCP and UDP proxy protocol built on QUIC, designed to provide speed, security, and censorship resistance. This document describes the protocol used by XLESS starting from version 1.0.1. From now on, we will refer to it as "the protocol" or "the XLESS protocol."
 
 ## Language Requirements
 
@@ -161,26 +161,17 @@ Three special cases are:
 
 -----
 
-## "Salamander" Obfuscation
+## Obfuscation Layers (obfs)
 
-The XLESS protocol supports an optional obfuscation layer, codenamed "Salamander."
+The XLESS protocol supports **optional obfuscation layers**, implemented as `obfs` plugins, which operate on the UDP datagrams carrying QUIC packets. These layers aim to provide diverse traffic fingerprints by transforming the appearance of the QUIC packet payload, while ensuring the outer UDP encapsulation remains standard.
 
-"Salamander" **MUST** encapsulate all QUIC packets in the following format:
+Each `obfs` plugin **MUST** implement an interface that allows it to obfuscate the outgoing QUIC packet (as a UDP payload) and de-obfuscate the incoming UDP payload (to reveal the original QUIC packet). When an `obfs` plugin is enabled, the UDP datagram will carry the transformed QUIC packet, designed to appear as a different, predefined pattern.
 
-```
-[8 bytes] Salt
-[bytes] Payload
-```
+The selection of an `obfs` plugin **MAY** be configured by the user. When an `obfs` plugin is used:
 
-For each QUIC packet, the obfuscator **MUST** compute the BLAKE2b-256 hash of a randomly generated 8-byte salt value appended to a user-provided pre-shared key.
+* The obfuscated traffic **MUST** remain encapsulated within standard UDP datagrams.
+* The chosen `obfs` plugin **SHOULD** transform the QUIC packet payload into a structure that mimics a protocol commonly observed over UDP, such as DNS, NTP, or DTLS. This ensures that the transformed traffic retains a plausible appearance on the network layer.
+* The `obfs` plugin **MUST NOT** attempt to mimic protocols that are exclusively or predominantly transmitted over TCP (e.g., HTTP/1.1, HTTP/2, SSH, or conventional TLS handshakes/application data).
+* The `obfs` plugin **MUST NOT** alter the fundamental QUIC framing or handshake process, only the appearance of the QUIC packet payload as it travels over UDP.
 
-$$hash = BLAKE2b-256(key + salt)$$
-
-This hash value is then used to obfuscate the payload using the following algorithm:
-
-```python
-for i in range(0, len(payload)):
-    payload[i] ^= hash[i % 32]
-```
-
-The de-obfuscator **MUST** use the same algorithm to compute the salted hash and de-obfuscate the payload. Any invalid packet **MUST** be dropped.
+This approach allows XLESS to achieve a wide range of plausible traffic patterns at the UDP layer, enhancing censorship resistance by diversifying its network footprint.
