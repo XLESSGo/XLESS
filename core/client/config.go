@@ -19,6 +19,7 @@ const (
 
 const (
 	ProtocolTypeDefault  ProtocolType = "default" // 默认协议类型
+)
 
 type Config struct {
 	ConnFactory     ConnFactory
