@@ -196,8 +196,9 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		encryptedSegmentPayload []byte
 		consumedBytes           int
 		err                     error
-		aesgcm                  cipher.AEAD // Declare aesgcm here
-		decryptedSegmentPayload []byte      // Declare decryptedSegmentPayload here
+		block                   cipher.Block // Declare block here
+		aesgcm                  cipher.AEAD
+		decryptedSegmentPayload []byte
 	)
 
 	for currentParseOffset < len(in) {
@@ -271,7 +272,8 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 		if err != nil {
 			return 0
 		}
-		block, err := aes.NewCipher(aesKey)
+		// Assign to the already declared block variable
+		block, err = aes.NewCipher(aesKey)
 		if err != nil {
 			return 0
 		}
