@@ -36,7 +36,8 @@ type Config struct {
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
 	DecoyURL              string
-
+	Protocol      string
+	ProtocolParam string
 	EnableUQUIC           bool
 	UQUICSpecID           quic.QUICID // 类型必须是 quic.QUICID
 }
