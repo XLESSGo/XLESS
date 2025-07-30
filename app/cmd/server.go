@@ -77,6 +77,8 @@ type serverConfig struct {
 	DecoyURL              string                      `mapstructure:"decoyURL"` // New field
 	EnableUQUIC           bool                        `mapstructure:"enableUQUIC"`   // 从 serverConfigQUIC 移到这里
 	UQUICSpecID           quic.QUICID                 `mapstructure:"uquicSpecID"` // 从 serverConfigQUIC 移到这里
+	Protocol              string                      `mapstructure:"protocol"`
+	ProtocolParam         string                      `mapstructure:"protocolParam"`
 }
 
 // serverConfigObfs struct now directly embeds obfs.ObfuscatorConfig
@@ -570,6 +572,20 @@ func (c *serverConfig) fillTLSConfig(hyConfig *server.Config) error {
 	return nil
 }
 
+func (c *serverConfig) fillProtocolConfig(hyConfig *server.Config) error {
+	// 根据 Protocol 类型进行不同的初始化
+	switch strings.ToLower(c.Protocol) {
+	case "", "default":
+		// 默认协议，可能不需要额外设置，或者使用默认值
+		hyConfig.Protocol = server.ProtocolTypeDefault // 假设 server.ProtocolTypeDefault 是一个常量
+		hyConfig.ProtocolParam = ""
+	// 添加更多 case 来处理其他协议类型
+	default:
+		return configError{Field: "protocol", Err: fmt.Errorf("unsupported protocol type: %s", c.Protocol)}
+	}
+	return nil
+}
+
 func (c *serverConfig) fillDecoyURL(hyConfig *server.Config) error {
 	if c.DecoyURL == "" {
 		return configError{Field: "decoyURL", Err: errors.New("decoyURL is empty")}
@@ -1035,6 +1051,7 @@ func (c *serverConfig) Config() (*server.Config, error) {
 		c.fillMasqHandler,
 		c.fillDecoyURL,
 		c.fillUQUICConfig, // 保持不变
+		c.fillProtocolConfig, // <<< 新增这一行
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
