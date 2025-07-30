@@ -11,6 +11,7 @@ on:
   pull_request:
     branches: ["*"]
     # 对于拉取请求，工作流将始终触发，然后由后续的 job 条件判断是否执行特定模块的构建
+  workflow_dispatch:
 
 jobs:
   # 构建和测试 'app' 模块的 Job
