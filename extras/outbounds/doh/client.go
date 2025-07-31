@@ -42,7 +42,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/idna"
 
-	"github.com/m13253/dns-over-https/v2/doh-client/config"
+	// Removed: "github.com/m13253/dns-over-https/v2/doh-client/config"
 	"github.com/m13253/dns-over-https/v2/doh-client/selector"
 	jsondns "github.com/m13253/dns-over-https/v2/json-dns"
 )
@@ -50,12 +50,12 @@ import (
 type Client struct {
 	httpClientLastCreate time.Time
 	cookieJar            http.CookieJar
-	selector             selector.Selector
+	selector             selector.Selector // This field will now be set directly by NewClient
 	httpClientMux        *sync.RWMutex
 	tcpClient            *dns.Client
 	bootstrapResolver    *net.Resolver
 	udpClient            *dns.Client
-	conf                 *config.Config
+	conf                 *Config // Changed from *config.Config to *Config (referring to doh.Config)
 	httpTransport        *http.Transport
 	httpClient           *http.Client
 	udpServers           []*dns.Server
@@ -74,9 +74,13 @@ type DNSRequest struct {
 	ednsClientNetmask uint8
 }
 
-func NewClient(conf *config.Config) (c *Client, err error) {
+// NewClient creates a new DoH client instance.
+// conf: The configuration for the DoH client.
+// s: The selector to be used for choosing upstream servers.
+func NewClient(conf *Config, s selector.Selector) (c *Client, err error) { // FIXED: Changed signature to accept *Config and selector.Selector
 	c = &Client{
-		conf: conf,
+		conf:     conf,
+		selector: s, // FIXED: Assign the provided selector directly
 	}
 
 	udpHandler := dns.HandlerFunc(c.udpHandlerFunc)
@@ -136,9 +140,6 @@ func NewClient(conf *config.Config) (c *Client, err error) {
 			}
 		}
 	}
-	// Most CDNs require Cookie support to prevent DDoS attack.
-	// Disabling Cookie does not effectively prevent tracking,
-	// so I will leave it on to make anti-DDoS services happy.
 	if !c.conf.Other.NoCookies {
 		c.cookieJar, err = cookiejar.New(nil)
 		if err != nil {
@@ -154,69 +155,10 @@ func NewClient(conf *config.Config) (c *Client, err error) {
 		return nil, err
 	}
 
-	switch c.conf.Upstream.UpstreamSelector {
-	case config.NginxWRR:
-		if c.conf.Other.Verbose {
-			log.Println(config.NginxWRR, "mode start")
-		}
-
-		s := selector.NewNginxWRRSelector(time.Duration(c.conf.Other.Timeout) * time.Second)
-		for _, u := range c.conf.Upstream.UpstreamGoogle {
-			if err := s.Add(u.URL, selector.Google, u.Weight); err != nil {
-				return nil, err
-			}
-		}
-
-		for _, u := range c.conf.Upstream.UpstreamIETF {
-			if err := s.Add(u.URL, selector.IETF, u.Weight); err != nil {
-				return nil, err
-			}
-		}
-
-		c.selector = s
-
-	case config.LVSWRR:
-		if c.conf.Other.Verbose {
-			log.Println(config.LVSWRR, "mode start")
-		}
-
-		s := selector.NewLVSWRRSelector(time.Duration(c.conf.Other.Timeout) * time.Second)
-		for _, u := range c.conf.Upstream.UpstreamGoogle {
-			if err := s.Add(u.URL, selector.Google, u.Weight); err != nil {
-				return nil, err
-			}
-		}
-
-		for _, u := range c.conf.Upstream.UpstreamIETF {
-			if err := s.Add(u.URL, selector.IETF, u.Weight); err != nil {
-				return nil, err
-			}
-		}
-
-		c.selector = s
-
-	default:
-		if c.conf.Other.Verbose {
-			log.Println(config.Random, "mode start")
-		}
-
-		// if selector is invalid or random, use random selector, or should we stop program and let user knows he is wrong?
-		s := selector.NewRandomSelector()
-		for _, u := range c.conf.Upstream.UpstreamGoogle {
-			if err := s.Add(u.URL, selector.Google); err != nil {
-				return nil, err
-			}
-		}
-
-		for _, u := range c.conf.Upstream.UpstreamIETF {
-			if err := s.Add(u.URL, selector.IETF); err != nil {
-				return nil, err
-			}
-		}
-
-		c.selector = s
-	}
-
+	// FIXED: Removed the selector creation logic from NewClient,
+	// as the selector is now passed as an argument.
+	// The provided selector 's' will be used directly.
+	// The selector's StartEvaluate() and ReportWeights() will be called from here if needed.
 	if c.conf.Other.Verbose {
 		if reporter, ok := c.selector.(selector.DebugReporter); ok {
 			reporter.ReportWeights()
@@ -238,7 +180,6 @@ func (c *Client) newHTTPClient() error {
 	dialer := &net.Dialer{
 		Timeout:   time.Duration(c.conf.Other.Timeout) * time.Second,
 		KeepAlive: 30 * time.Second,
-		// DualStack: true,
 		Resolver: c.bootstrapResolver,
 	}
 	c.httpTransport = &http.Transport{
@@ -386,7 +327,6 @@ func (c *Client) handlerFunc(w dns.ResponseWriter, r *dns.Msg, isTCP bool) {
 
 	if req.err != nil {
 		if urlErr, ok := req.err.(*url.Error); ok {
-			// should we only check timeout?
 			if urlErr.Timeout() {
 				c.selector.ReportUpstreamStatus(upstream, selector.Timeout)
 			}
@@ -395,7 +335,6 @@ func (c *Client) handlerFunc(w dns.ResponseWriter, r *dns.Msg, isTCP bool) {
 		return
 	}
 
-	// if req.err == nil, req.response != nil
 	defer req.response.Body.Close()
 
 	for _, header := range c.conf.Other.DebugHTTPHeaders {
@@ -425,13 +364,6 @@ func (c *Client) handlerFunc(w dns.ResponseWriter, r *dns.Msg, isTCP bool) {
 			panic("Unknown response Content-Type")
 		}
 	}
-
-	// https://developers.cloudflare.com/1.1.1.1/dns-over-https/request-structure/ says
-	// returns code will be 200 / 400 / 413 / 415 / 504, some server will return 503, so
-	// I think if status code is 5xx, upstream must have some problems
-	/*if req.response.StatusCode/100 == 5 {
-		c.selector.ReportUpstreamStatus(upstream, selector.Medium)
-	}*/
 
 	switch req.response.StatusCode / 100 {
 	case 5:
