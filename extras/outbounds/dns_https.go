@@ -16,7 +16,7 @@ import (
 type dohResolver struct {
 	Client *doh.Client // The DoH client instance from github.com/XLESSGo/XLESS/extras/outbounds/doh
 	// httpClient is no longer needed here as doh.Client will expose Exchange method.
-	Next   PluggableOutbound
+	Next PluggableOutbound
 }
 
 // NewDoHResolver creates a new dohResolver instance.
@@ -36,21 +36,21 @@ func NewDoHResolver(host string, timeout time.Duration, sni string, insecure boo
 		},
 		Other: doh.OtherConfig{
 			InsecureTLSSkipVerify: insecure,
-			Timeout:               timeoutOrDefault(timeout),
+			// FIXED: Convert time.Duration to int (milliseconds) as expected by doh.OtherConfig.Timeout.
+			// Assuming Timeout expects milliseconds based on common Go network library patterns.
+			Timeout: int(timeoutOrDefault(timeout).Milliseconds()),
 		},
 	}
 
-	// Although randomSelector is created, it's not passed directly to doh.NewClient
-	// based on the compilation error "too many arguments".
-	// The selector setup should be handled internally by doh.NewClient based on the config.
-	_ = selector.NewRandomSelector() // Keep this line if it's used elsewhere, otherwise remove.
+	// Create the selector instance.
+	randomSelector := selector.NewRandomSelector()
 	// The `randomSelector.Add` call is also not directly relevant here if NewClient only takes config.
 	// If XLESSGo's doh.NewClient internally uses the selector package, it will handle this.
 	// For now, we assume the config fully dictates the upstream setup.
 
 	// Initialize XLESSGo's doh.Client.
-	// FIXED: Removed 'randomSelector' argument to resolve "too many arguments" error.
-	client, err := doh.NewClient(config)
+	// FIXED: Added 'randomSelector' as the second argument to doh.NewClient.
+	client, err := doh.NewClient(config, randomSelector)
 	if err != nil {
 		panic("Failed to create DoH client: " + err.Error())
 	}
@@ -58,7 +58,7 @@ func NewDoHResolver(host string, timeout time.Duration, sni string, insecure boo
 	// Custom HTTP client is no longer needed here as doh.Client will expose Exchange method.
 	// tr := &http.Transport{
 	// 	TLSClientConfig: &tls.Config{
-	// 		ServerName:         sni,
+	// 		ServerName:        sni,
 	// 		InsecureSkipVerify: insecure,
 	// 	},
 	// 	DisableKeepAlives: true,
@@ -71,7 +71,7 @@ func NewDoHResolver(host string, timeout time.Duration, sni string, insecure boo
 	return &dohResolver{
 		Client: client,
 		// httpClient: httpClient, // Removed
-		Next:   next,
+		Next: next,
 	}
 }
 
