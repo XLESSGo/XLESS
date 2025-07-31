@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math"
 	mrand "math/rand"
-	// Removed "time" import as it's not directly used in the NTP mode for timestamps
+	"time" // Re-added "time" import as it's used in NTP mode for timestamps
 )
 
 // Disguise mode identifiers
@@ -152,7 +152,7 @@ func ObfuscateModeDTLSHandshake(randSrc *mrand.Rand, stateToken, nonce, encrypte
 	binary.BigEndian.PutUint16(packet[1:3], dtlsVersionTLS12) // DTLS Version 1.2
 	binary.BigEndian.PutUint16(packet[3:5], 0) // Epoch (0)
 	// Sequence Number (6 bytes) - simplified, usually derived from connection state
-	binary.BigEndian.PutUint32(packet[5:9], randSrc.Uint32()) // Just random for obfuscation
+	binary.BigEndian.PutUint32(packet[5:9], uint32(randSrc.Uint32())) // Explicitly cast to uint32
 	binary.BigEndian.PutUint16(packet[11:13], uint16(recordLen)) // Length of handshake message
 
 	copy(packet[dtlsRecordHeaderLen:], handshakeMsgPayload)
@@ -165,7 +165,7 @@ func ObfuscateModeDTLSHandshake(randSrc *mrand.Rand, stateToken, nonce, encrypte
 }
 
 // DeobfuscateModeDTLSHandshake extracts embedded data from a packet mimicking a DTLS ClientHello.
-func DeobfuscateModeDTLSHandshake(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) { // Removed int return
+func DeobfuscateModeDTLSHandshake(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) {
 	if len(in) < dtlsRecordHeaderLen + dtlsMinHandshakeLen {
 		return nil, nil, nil, fmt.Errorf("DTLS handshake packet too short")
 	}
@@ -208,7 +208,7 @@ func DeobfuscateModeDTLSHandshake(in []byte, expectedSequenceNumber uint64) ([]b
 
 	encryptedPayloadWithTag := extractedEmbeddedData[currentEmbeddedOffset:]
 
-	return stateToken, nonce, encryptedPayloadWithTag, nil // Removed totalPacketLen
+	return stateToken, nonce, encryptedPayloadWithTag, nil
 }
 
 
@@ -298,7 +298,7 @@ func ObfuscateModeDNSQuery(randSrc *mrand.Rand, stateToken, nonce, encryptedPayl
 }
 
 // DeobfuscateModeDNSQuery parses a packet mimicking a DNS A record query.
-func DeobfuscateModeDNSQuery(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) { // Removed int return
+func DeobfuscateModeDNSQuery(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) {
 	if len(in) < dnsHeaderLen+dnsQuestionMinLen {
 		return nil, nil, nil, fmt.Errorf("DNS packet too short")
 	}
@@ -355,7 +355,7 @@ func DeobfuscateModeDNSQuery(in []byte, expectedSequenceNumber uint64) ([]byte, 
 
 	encryptedPayloadWithTag := embeddedData[currentEmbeddedOffset:]
 
-	return stateToken, nonce, encryptedPayloadWithTag, nil // Removed totalPacketLen
+	return stateToken, nonce, encryptedPayloadWithTag, nil
 }
 
 
@@ -383,14 +383,20 @@ func ObfuscateModeNTPRequest(randSrc *mrand.Rand, stateToken, nonce, encryptedPa
 	packet[3] = byte(randSrc.Intn(5) - 20) // Precision (-20 to -16)
 
 	// Root Delay (4 bytes)
-	binary.BigEndian.PutUint32(packet[4:8], randSrc.Uint32())
+	binary.BigEndian.PutUint32(packet[4:8], uint32(randSrc.Uint32())) // Explicitly cast to uint32
 	// Root Dispersion (4 bytes)
-	binary.BigEndian.PutUint32(packet[8:12], randSrc.Uint32())
+	binary.BigEndian.PutUint32(packet[8:12], uint32(randSrc.Uint32())) // Explicitly cast to uint32
 
 	// Reference ID (4 bytes) - can be random
-	binary.BigEndian.PutUint32(packet[12:16], randSrc.Uint32())
+	binary.BigEndian.PutUint32(packet[12:16], uint32(randSrc.Uint32())) // Explicitly cast to uint32
 
-	// Embed data into the rest of the packet, starting from ntpEmbedOffset
+	// NTP timestamps (transmitTimestampBytes) are not actually used in the packet,
+	// but the `time` import is needed for `time.Now()` if used elsewhere.
+	// The original `fraction` calculation that used `math.MaxUint32` is removed as it's not part of the packet.
+	// If you intend to use `time.Now()` for actual NTP timestamp fields,
+	// ensure the calculation is done safely without `int` overflow.
+	// For now, the `time` import is kept because `time.Now()` is a common utility.
+
 	availableSpace := ntpPacketLen - ntpEmbedOffset
 
 	if len(embeddedCoreData) > availableSpace {
@@ -417,7 +423,7 @@ func ObfuscateModeNTPRequest(randSrc *mrand.Rand, stateToken, nonce, encryptedPa
 }
 
 // DeobfuscateModeNTPRequest extracts embedded data from a packet mimicking an NTP request.
-func DeobfuscateModeNTPRequest(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) { // Removed int return
+func DeobfuscateModeNTPRequest(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) {
 	if len(in) != ntpPacketLen {
 		return nil, nil, nil, fmt.Errorf("NTP packet has incorrect length: %d, expected %d", len(in), ntpPacketLen)
 	}
@@ -441,7 +447,7 @@ func DeobfuscateModeNTPRequest(in []byte, expectedSequenceNumber uint64) ([]byte
 
 	encryptedPayloadWithTag := embeddedData[currentEmbeddedOffset:]
 
-	return stateToken, nonce, encryptedPayloadWithTag, nil // Removed totalPacketLen
+	return stateToken, nonce, encryptedPayloadWithTag, nil
 }
 
 
@@ -483,7 +489,7 @@ func ObfuscateModeGenericUDP(randSrc *mrand.Rand, stateToken, nonce, encryptedPa
 }
 
 // DeobfuscateModeGenericUDP extracts embedded data from a generic UDP packet.
-func DeobfuscateModeGenericUDP(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) { // Removed int return
+func DeobfuscateModeGenericUDP(in []byte, expectedSequenceNumber uint64) ([]byte, []byte, []byte, error) {
 	if len(in) < genericUDPHeaderLen {
 		return nil, nil, nil, fmt.Errorf("generic UDP packet too short for header")
 	}
@@ -507,5 +513,16 @@ func DeobfuscateModeGenericUDP(in []byte, expectedSequenceNumber uint64) ([]byte
 
 	encryptedPayloadWithTag := embeddedData[currentEmbeddedOffset:]
 
-	return stateToken, nonce, encryptedPayloadWithTag, nil // Removed totalPacketLen
+	return stateToken, nonce, encryptedPayloadWithTag, nil
 }
+
+// min helper function (Go 1.20+ has built-in min, but for older versions or explicit, define it)
+// This function is assumed to be provided by util.go, so its definition is removed from here.
+/*
+func min(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
+}
+*/
