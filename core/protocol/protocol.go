@@ -8,7 +8,6 @@ import (
 
 	uquic "github.com/XLESSGo/uquic" // 导入 uquic 包
 	// 不要在这里导入 core/internal/protocol 的内容，而是直接依赖它
-	_ "github.com/XLESSGo/XLESS/core/protocol/auth" // 导入 plugins 包，使其 init() 函数被执行
 )
 
 // ProtocolData is a generic abstraction for data that protocol plugins can operate on.
