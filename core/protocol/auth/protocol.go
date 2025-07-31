@@ -1,5 +1,5 @@
 // core/protocol/protocol.go
-package protocol
+package auth
 
 import (
 	"fmt"
