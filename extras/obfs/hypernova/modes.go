@@ -472,7 +472,7 @@ func ObfuscateModeGenericUDP(randSrc *mrand.Rand, stateToken, nonce, encryptedPa
 
 	// Prepend a length field for the final embedded data
 	totalPayloadLen := len(finalEmbeddedData)
-	if totalPayloadLen > math.MaxUint32 { // Ensure it fits in 4 bytes
+	if uint32(totalPayloadLen) > math.MaxUint32 { // Ensure it fits in 4 bytes
 		return 0 // Payload too large
 	}
 
