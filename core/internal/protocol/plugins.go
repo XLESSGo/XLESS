@@ -1,5 +1,5 @@
 package protocol
 
-import(
+import (
   _ "github.com/XLESSGo/XLESS/core/protocol/auth" // 导入 
   )
