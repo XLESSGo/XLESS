@@ -45,10 +45,10 @@ require (
 	github.com/google/pprof v0.0.0-20250501235452-c0086092b71a // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.6 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.5 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc // indirect
+	github.com/karlseguin/ccache/v3 v3.0.6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/libdns/libdns v0.2.3 // indirect
