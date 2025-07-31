@@ -2,7 +2,6 @@ package outbounds
 
 import (
 	"context"
-	"crypto/tls"
 	"net"
 	"time"
 
@@ -158,19 +157,3 @@ func (r *dohResolver) UDP(reqAddr *AddrEx) (UDPConn, error) {
 	r.resolve(reqAddr)
 	return r.Next.UDP(reqAddr)
 }
-
-// timeoutOrDefault is a helper function to provide a default timeout duration.
-// Adjust the default value as per your project requirements.
-func timeoutOrDefault(d time.Duration) time.Duration {
-	if d == 0 {
-		return 5 * time.Second // Default timeout
-	}
-	return d
-}
-
-// tryParseIP is a helper function to check if a host is already an IP address.
-// Adjust as per your project requirements.
-func tryParseIP(reqAddr *AddrEx) bool {
-	return net.ParseIP(reqAddr.Host) != nil
-}
-
