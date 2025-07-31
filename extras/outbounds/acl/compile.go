@@ -5,7 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time" // GCache可能需要time包处理过期时间
 
 	"github.com/XLESSGo/XLESS/extras/outbounds/acl/v2geo"
 
@@ -201,7 +200,7 @@ func parseProtoPort(protoPort string) (Protocol, uint16, uint16, bool) {
 					return ProtocolBoth, 0, 0, false
 				}
 				startPort = uint16(p64)
-				endPort = start1Port
+				endPort = startPort
 			} else {
 				p64, err := strconv.ParseUint(ports[0], 10, 16)
 				if err != nil {
