@@ -8,7 +8,7 @@ import (
 
 	"github.com/XLESSGo/XLESS/extras/outbounds/acl/v2geo"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/bluele/gcache" // 切换到 gcache 库
 )
 
 type Protocol int
@@ -63,25 +63,35 @@ type matchResult[O Outbound] struct {
 
 type compiledRuleSetImpl[O Outbound] struct {
 	Rules []compiledRule[O]
-	Cache *lru.Cache[string, matchResult[O]] // key: HostInfo.String()
+	// GCache 是非泛型的，所以我们需要使用 interface{} 作为键和值
+	Cache gcache.Cache
 }
 
 func (s *compiledRuleSetImpl[O]) Match(host HostInfo, proto Protocol, port uint16) (O, net.IP) {
 	host.Name = strings.ToLower(host.Name) // Normalize host name to lower case
 	key := host.String()
-	if result, ok := s.Cache.Get(key); ok {
-		return result.Outbound, result.HijackAddress
-	}
-	for _, rule := range s.Rules {
-		if rule.Match(host, proto, port) {
-			result := matchResult[O]{rule.Outbound, rule.HijackAddress}
-			s.Cache.Add(key, result)
+
+	// GCache.Get 返回 (interface{}, error)
+	// 如果 key 不存在或者过期，会返回 ErrKeyNotFound
+	cachedResult, err := s.Cache.Get(key)
+	if err == nil {
+		// 类型断言，如果成功则返回缓存结果
+		if result, ok := cachedResult.(matchResult[O]); ok {
 			return result.Outbound, result.HijackAddress
 		}
 	}
-	// No match should also be cached
+
+	for _, rule := range s.Rules {
+		if rule.Match(host, proto, port) {
+			result := matchResult[O]{rule.Outbound, rule.HijackAddress}
+			// 使用 Set 方法设置缓存，对于 ACL 规则，通常不需要过期时间
+			s.Cache.Set(key, result)
+			return result.Outbound, result.HijackAddress
+		}
+	}
+	// 没有匹配到规则，也缓存结果，避免重复查找
 	var zero O
-	s.Cache.Add(key, matchResult[O]{zero, nil})
+	s.Cache.Set(key, matchResult[O]{zero, nil})
 	return zero, nil
 }
 
@@ -130,10 +140,12 @@ func Compile[O Outbound](rules []TextRule, outbounds map[string]O,
 		}
 		compiledRules[i] = compiledRule[O]{outbound, hm, proto, startPort, endPort, hijackAddress}
 	}
-	cache, err := lru.New[string, matchResult[O]](cacheSize)
-	if err != nil {
-		return nil, err
-	}
+
+	// 使用 gcache 创建 LRU 缓存
+	// GCache 是非泛型的，所以我们不能直接指定 O 类型，而是依赖于 interface{}
+	// 这里我们选择 LRU 策略，并指定缓存大小
+	cache := gcache.New(cacheSize).LRU().Build()
+
 	return &compiledRuleSetImpl[O]{compiledRules, cache}, nil
 }
 
