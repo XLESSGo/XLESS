@@ -190,7 +190,7 @@ func (c *Client) newHTTPClient() error {
 		MaxIdleConnsPerHost:   10,
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSHandshakeTimeout:   time.Duration(c.conf.Other.Timeout) * time.Second,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: c.conf.Other.TLSInsecureSkipVerify},
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: c.conf.Other.InsecureTLSSkipVerify},
 	}
 	if c.conf.Other.NoIPv6 {
 		c.httpTransport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
