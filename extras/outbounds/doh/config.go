@@ -1,7 +1,5 @@
 package doh // This package declaration must match the other files in the doh folder
 
-import "time" // Keep time import for Timeout field
-
 // UpstreamConfig represents a single upstream server configuration.
 type UpstreamConfig struct {
 	URL    string `toml:"url"` // URL of the upstream DoH server
