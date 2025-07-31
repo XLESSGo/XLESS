@@ -1,6 +1,6 @@
 package doh // This package declaration must match the other files in the doh folder
 
-import "time"
+import "time" // Keep time import for Timeout field
 
 // UpstreamConfig represents a single upstream server configuration.
 type UpstreamConfig struct {
@@ -17,12 +17,16 @@ type UpstreamSectionConfig struct {
 
 // OtherConfig represents the 'other' section of the DoH configuration, for miscellaneous settings.
 type OtherConfig struct {
-	NoECS                 bool          `toml:"no_ecs"`                 // Disable EDNS0-Client-Subnet
-	NoIPv6                bool          `toml:"no_ipv6"`                // Disable IPv6 when querying upstream
-	NoUserAgent           bool          `toml:"no_user_agent"`          // Disable submitting User-Agent header
-	Verbose               bool          `toml:"verbose"`                // Enable verbose logging
-	InsecureTLSSkipVerify bool          `toml:"insecure_tls_skip_verify"` // Skip TLS certificate verification (DANGEROUS IN PRODUCTION)
-	Timeout               time.Duration `toml:"timeout"`                // Global timeout for HTTP requests made by the client
+	NoECS                 bool     `toml:"no_ecs"`                 // Disable EDNS0-Client-Subnet
+	NoIPv6                bool     `toml:"no_ipv6"`                // Disable IPv6 when querying upstream
+	NoUserAgent           bool     `toml:"no_user_agent"`          // Disable submitting User-Agent header
+	Verbose               bool     `toml:"verbose"`                // Enable verbose logging
+	InsecureTLSSkipVerify bool     `toml:"insecure_tls_skip_verify"` // Skip TLS certificate verification (DANGEROUS IN PRODUCTION)
+	Timeout               int      `toml:"timeout"`                // Global timeout for HTTP requests made by the client (in seconds)
+	Bootstrap             []string `toml:"bootstrap"`              // List of bootstrap DNS servers
+	Passthrough           []string `toml:"passthrough"`            // List of domains to passthrough
+	NoCookies             bool     `toml:"no_cookies"`             // Disable HTTP cookies
+	DebugHTTPHeaders      []string `toml:"debug_http_headers"`     // Headers to log for debugging HTTP requests
 }
 
 // Config represents the overall configuration structure for the DoH client/server.
