@@ -124,12 +124,14 @@ func (o *HypernovaObfuscator) Obfuscate(in, out []byte) int {
 	chosenMode = int(modeSelectorByte) % NumDisguiseModes // NumDisguiseModes is defined in modes.go
 
 	switch chosenMode {
-	case ModeTLSHandshake:
-		totalOutputLen = ObfuscateModeTLSHandshake(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
+	case ModeDTLSHandshake: // Updated mode
+		totalOutputLen = ObfuscateModeDTLSHandshake(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
 	case ModeDNSQuery:
 		totalOutputLen = ObfuscateModeDNSQuery(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
-	case ModeSSHKeyExchange:
-		totalOutputLen = ObfuscateModeSSHKeyExchange(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
+	case ModeNTPRequest: // New mode
+		totalOutputLen = ObfuscateModeNTPRequest(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
+	case ModeGenericUDP: // New mode
+		totalOutputLen = ObfuscateModeGenericUDP(o.randSrc, stateToken, nonce, encryptedPayload, o.sendSequenceNumber, out)
 	default:
 		// Fallback or error, should not happen with proper modulo
 		fmt.Printf("Unknown disguise mode selected: %d\n", chosenMode)
@@ -173,12 +175,14 @@ func (o *HypernovaObfuscator) Deobfuscate(in, out []byte) int {
 
 	// Attempt to deobfuscate based on the current expected mode
 	switch expectedMode {
-	case ModeTLSHandshake:
-		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeTLSHandshake(in, o.recvSequenceNumber)
+	case ModeDTLSHandshake: // Updated mode
+		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeDTLSHandshake(in, o.recvSequenceNumber)
 	case ModeDNSQuery:
 		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeDNSQuery(in, o.recvSequenceNumber)
-	case ModeSSHKeyExchange:
-		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeSSHKeyExchange(in, o.recvSequenceNumber)
+	case ModeNTPRequest: // New mode
+		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeNTPRequest(in, o.recvSequenceNumber)
+	case ModeGenericUDP: // New mode
+		stateToken, nonce, encryptedPayloadWithTag, err = DeobfuscateModeGenericUDP(in, o.recvSequenceNumber)
 	default:
 		fmt.Printf("Unknown expected disguise mode: %d\n", expectedMode)
 		return 0
