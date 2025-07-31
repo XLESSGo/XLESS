@@ -8,7 +8,7 @@ import (
 
 	"github.com/XLESSGo/XLESS/extras/outbounds/acl/v2geo"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	ccache "github.com/karlseguin/ccache/v3" // 切换到合规的库
 )
 
 type Protocol int
@@ -63,25 +63,26 @@ type matchResult[O Outbound] struct {
 
 type compiledRuleSetImpl[O Outbound] struct {
 	Rules []compiledRule[O]
-	Cache *lru.Cache[string, matchResult[O]] // key: HostInfo.String()
+	Cache *ccache.Cache[matchResult[O]] // key: HostInfo.String()
 }
 
 func (s *compiledRuleSetImpl[O]) Match(host HostInfo, proto Protocol, port uint16) (O, net.IP) {
 	host.Name = strings.ToLower(host.Name) // Normalize host name to lower case
 	key := host.String()
-	if result, ok := s.Cache.Get(key); ok {
+	if item := s.Cache.Get(key); item != nil && !item.Expired() {
+		result := item.Value()
 		return result.Outbound, result.HijackAddress
 	}
 	for _, rule := range s.Rules {
 		if rule.Match(host, proto, port) {
 			result := matchResult[O]{rule.Outbound, rule.HijackAddress}
-			s.Cache.Add(key, result)
+			s.Cache.Set(key, result, ccache.NoExpiration) // ACL 规则缓存应永久有效，直到规则集重新编译
 			return result.Outbound, result.HijackAddress
 		}
 	}
 	// No match should also be cached
 	var zero O
-	s.Cache.Add(key, matchResult[O]{zero, nil})
+	s.Cache.Set(key, matchResult[O]{zero, nil}, ccache.NoExpiration) // ACL 规则缓存应永久有效，直到规则集重新编译
 	return zero, nil
 }
 
@@ -130,10 +131,9 @@ func Compile[O Outbound](rules []TextRule, outbounds map[string]O,
 		}
 		compiledRules[i] = compiledRule[O]{outbound, hm, proto, startPort, endPort, hijackAddress}
 	}
-	cache, err := lru.New[string, matchResult[O]](cacheSize)
-	if err != nil {
-		return nil, err
-	}
+	// 使用 ccache.Configure 来配置缓存
+	config := ccache.Configure[matchResult[O]]().MaxSize(int64(cacheSize))
+	cache := ccache.New(config)
 	return &compiledRuleSetImpl[O]{compiledRules, cache}, nil
 }
 
