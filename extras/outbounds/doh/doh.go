@@ -12,18 +12,18 @@ import (
 )
 
 // Get returns an upstream from the client's internal selector.
-// It assumes 'c.s' is the internal selector field of the Client struct.
+// It uses the 'selector' field of the Client struct.
 func (c *Client) Get() *selector.Upstream {
-	if c.s == nil {
+	if c.selector == nil { // Corrected field name from c.s to c.selector
 		// This indicates the selector was not properly initialized in NewClient.
 		// In a production scenario, you might want to return a specific error.
 		return nil
 	}
-	return c.s.Get()
+	return c.selector.Get() // Corrected to call the Get method on the selector
 }
 
 // Exchange performs a DNS-over-HTTPS query using the client's internal HTTP client and selector.
-// It assumes 'c.client' is the internal http.Client field of the Client struct.
+// It uses the 'httpClient' field of the Client struct.
 func (c *Client) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
 	upstream := c.Get()
 	if upstream == nil {
@@ -45,11 +45,11 @@ func (c *Client) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
 	req.Header.Set("Content-Type", upstream.RequestType)
 	req.Header.Set("Accept", upstream.RequestType)
 
-	if c.client == nil {
+	if c.httpClient == nil { // Corrected field name from c.client to c.httpClient
 		// This indicates the http.Client was not properly initialized in NewClient.
 		return nil, fmt.Errorf("internal HTTP client is not initialized")
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.httpClient.Do(req) // Corrected field name from c.client to c.httpClient
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
