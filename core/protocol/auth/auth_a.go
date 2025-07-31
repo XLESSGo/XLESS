@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/crc32" // 用于 CRC32 校验
 	// 导入核心协议接口包，并使用别名 protocol_ext
-	protocol_ext "github.com/XLESSGo/XLESS/core/protocol"
 	// 导入 internal/protocol 包以访问 UDPMessage 结构体
 	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
 )
@@ -171,7 +170,7 @@ func (p *AuthAProtocol) removeAuthHeader(obfuscatedData []byte) ([]byte, error) 
 
 // init 函数用于注册 AuthAProtocol 插件。
 func init() {
-	protocol_ext.RegisterProtocol("auth_a", func() protocol_ext.Protocol {
+	RegisterProtocol("auth_a", func() protocol_ext.Protocol {
 		return &AuthAProtocol{}
 	})
 }
