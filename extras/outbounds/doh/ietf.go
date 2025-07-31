@@ -21,7 +21,7 @@
    DEALINGS IN THE SOFTWARE.
 */
 
-package main
+package doh
 
 import (
 	"bytes"
