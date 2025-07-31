@@ -3,11 +3,6 @@ name: "Go Selective Build"
 on:
   push:
     branches: ["*"]
-    # 移除 paths 过滤，确保任何 push 都会触发工作流
-    # paths:
-    #   - 'app/**'
-    #   - 'core/**'
-    #   - 'extras/**'
   pull_request:
     branches: ["*"]
     # 对于拉取请求，工作流将始终触发，然后由后续的 job 条件判断是否执行特定模块的构建
