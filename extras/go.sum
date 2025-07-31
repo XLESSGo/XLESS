@@ -20,10 +20,10 @@ github.com/google/gopacket v1.1.19 h1:ves8RnFZPGiFnTS0uPQStjwru6uO6h+nlr9j6fL7kF
 github.com/google/gopacket v1.1.19/go.mod h1:iJ8V8n6KS+z2U1A8pUwu8bW5SyEMkXJB8Yo/Vo+TKTo=
 github.com/google/pprof v0.0.0-20250501235452-c0086092b71a h1:rDA3FfmxwXR+BVKKdz55WwMJ1pD2hJQNW31d+l3mPk4=
 github.com/google/pprof v0.0.0-20250501235452-c0086092b71a/go.mod h1:5hDyRhoBCxViHszMt12TnOpEI4VVi+U8Gm9iphldiMA=
-github.com/hashicorp/golang-lru/v2 v2.0.5 h1:wW7h1TG88eUIJ2i69gaE3uNVtEPIagzhGvHgwfx2Vm4=
-github.com/hashicorp/golang-lru/v2 v2.0.5/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc h1:RhT2pjLo3EVRmldbEcBdeRA7CGPWsNEJC+Y/N1aXQbg=
 github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc/go.mod h1:BaIJzjD2ZnHmx2acPF6XfGLPzNCMiBbMRqJr+8/8uRI=
+github.com/karlseguin/ccache/v3 v3.0.6 h1:6wC04CXSdptebuSUBgsQixNrrRMUdimtwmjlJUpCf/4=
+github.com/karlseguin/ccache/v3 v3.0.6/go.mod h1:b0qfdUOHl4vJgKFQN41paXIdBb3acAtyX2uWrBAZs1w=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
