@@ -1,58 +1,85 @@
 package outbounds
 
 import (
-	"context" // 用于 dohClient.Client.Exchange 方法
+	"context"
 	"crypto/tls"
 	"net"
 	"time"
 
-	"github.com/miekg/dns" // 用于构建和解析 DNS 消息
-	dohClient "github.com/m13253/dns-over-https/v2/doh-client" // 导入新的 DoH 客户端库，并使用别名避免冲突
+	"github.com/miekg/dns" // For building and parsing DNS messages
+	// Import the DoH client package from XLESSGo.
+	// Replace "github.com/XLESSGo/XLESS/extra/outbounds/doh" with the actual path if different.
+	doh "github.com/XLESSGo/XLESS/extra/outbounds/doh"
+	"github.com/m13253/dns-over-https/v2/doh-client/selector" // Required by XLESSGo's doh.Client
 )
 
-// dohResolver 是一个 PluggableOutbound DNS 解析器，
-// 它使用用户提供的 DNS-over-HTTPS 服务器解析主机名。
+// dohResolver is a PluggableOutbound DNS resolver that resolves hostnames
+// using the user-provided DNS-over-HTTPS server from the XLESSGo project.
 type dohResolver struct {
-	Client *dohClient.Client // 更改为新的客户端类型
+	Client *doh.Client // The DoH client instance from github.com/XLESSGo/XLESS/extra/outbounds/doh
 	Next   PluggableOutbound
 }
 
-// NewDoHResolver 创建一个新的 dohResolver 实例。
-// host 参数应为完整的 DoH 服务 URL (例如: "https://dns.google/dns-query")。
+// NewDoHResolver creates a new dohResolver instance.
+// host: The full URL of the DoH service (e.g., "https://dns.google/dns-query").
+// timeout: Timeout for DNS queries.
+// sni: Server Name Indication for TLS connections.
+// insecure: If true, skips TLS certificate verification (ONLY for testing, NOT recommended for production).
+// next: The next PluggableOutbound in the chain.
 func NewDoHResolver(host string, timeout time.Duration, sni string, insecure bool, next PluggableOutbound) PluggableOutbound {
-	// 创建标准的 crypto/tls.Config 实例
-	stdTLSClientConfig := &tls.Config{
-		ServerName:         sni,
-		InsecureSkipVerify: insecure,
-		// 对于客户端，通常不需要 Certificates 或 GetCertificate
+	// Create a minimal doh.Config struct to initialize the XLESSGo's doh.Client.
+	// This config maps the NewDoHResolver parameters to the doh.Config structure.
+	config := &doh.Config{
+		Upstream: doh.UpstreamSectionConfig{
+			UpstreamSelector: "random", // Using random selector for simplicity with a single upstream
+			UpstreamIETF: []doh.UpstreamConfig{ // Assuming the host is an IETF-style DoH endpoint
+				{
+					URL:    host,
+					Weight: 100, // Default weight for a single upstream
+				},
+			},
+			// UpstreamGoogle can be left empty if not used, or populated if needed
+		},
+		Other: doh.OtherConfig{
+			InsecureTLSSkipVerify: insecure,
+			Timeout:               timeoutOrDefault(timeout), // Use the provided timeout
+			// Other fields like NoECS, NoIPv6, NoUserAgent, Verbose will default to false
+		},
 	}
 
-	// m13253/dns-over-https/doh-client.NewClient 期望一个 Config 结构体
-	// 它会在内部创建并管理 http.Client
-	config := &dohClient.Config{
-		UpstreamURL:     host, // 这是完整的 DoH URL
-		TLSClientConfig: stdTLSClientConfig,
-		Timeout:         timeoutOrDefault(timeout),
-		// NoECS 和 Verbose 字段可以根据需要设置，默认为 false
-	}
-
-	client, err := dohClient.NewClient(config)
+	// Create a RandomSelector as required by doh.NewClient.
+	// This selector will manage the single upstream defined in the config.
+	randomSelector := selector.NewRandomSelector()
+	// Add the upstream to the selector.
+	// The UpstreamType needs to be determined. Assuming IETF for generic DoH.
+	// In a real scenario, you might need to infer this from the host URL or add a parameter.
+	err := randomSelector.Add(host, selector.IETF)
 	if err != nil {
-		// 在客户端创建失败时，根据您的应用程序错误处理策略进行处理。
-		// 这里选择 panic 以简化示例，但在实际应用中应返回错误或更优雅地处理。
-		panic(err)
+		// Handle error if adding upstream fails (e.g., unknown upstream type).
+		// In a production environment, this should be logged and potentially returned.
+		panic("Failed to add upstream to selector: " + err.Error())
+	}
+
+
+	// Initialize the XLESSGo's doh.Client with the created config and selector.
+	// Note: The doh.NewClient function internally handles the http.Client creation
+	// and TLS configuration based on the provided config.
+	client, err := doh.NewClient(config, randomSelector)
+	if err != nil {
+		// Handle client creation failure. In a real application, avoid panic.
+		panic("Failed to create DoH client: " + err.Error())
 	}
 
 	return &dohResolver{
-		Client: client, // 使用新的客户端实例
+		Client: client,
 		Next:   next,
 	}
 }
 
-// resolve 方法执行 DNS 解析。
+// resolve performs DNS resolution for the given AddrEx using the DoH client.
 func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	if tryParseIP(reqAddr) {
-		// 如果主机已经是 IP 地址，则无需解析。
+		// If the host is already an IP address, no resolution is needed.
 		return
 	}
 
@@ -62,57 +89,57 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	}
 	ch4, ch6 := make(chan lookupResult, 1), make(chan lookupResult, 1)
 
-	// 异步查询 A 记录
+	// Asynchronously query for A records (IPv4).
 	go func() {
 		m := new(dns.Msg)
-		// 设置 DNS 查询问题，将主机名转换为完全限定域名 (FQDN)
+		// Set the DNS question for A record, converting hostname to FQDN.
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeA)
-		m.RecursionDesired = true // 请求递归查询
+		m.RecursionDesired = true // Request recursive query
 
-		// 使用新的 DoH 客户端执行 DNS 消息交换
+		// Use the XLESSGo's DoH client to exchange DNS messages.
 		resp, err := r.Client.Exchange(context.Background(), m)
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
-			// 遍历响应中的 Answer 部分，查找 A 记录
+			// Iterate through the Answer section of the response to find A records.
 			for _, ans := range resp.Answer {
 				if a, ok := ans.(*dns.A); ok {
-					ip = a.A // 直接获取 net.IP 类型
-					break    // 只获取第一个 A 记录
+					ip = a.A // Get the net.IP directly
+					break    // Take the first A record found
 				}
 			}
 		}
 		ch4 <- lookupResult{ip, err}
 	}()
 
-	// 异步查询 AAAA 记录
+	// Asynchronously query for AAAA records (IPv6).
 	go func() {
 		m := new(dns.Msg)
-		// 设置 DNS 查询问题，将主机名转换为完全限定域名 (FQDN)
+		// Set the DNS question for AAAA record, converting hostname to FQDN.
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeAAAA)
-		m.RecursionDesired = true // 请求递归查询
+		m.RecursionDesired = true // Request recursive query
 
-		// 使用新的 DoH 客户端执行 DNS 消息交换
+		// Use the XLESSGo's DoH client to exchange DNS messages.
 		resp, err := r.Client.Exchange(context.Background(), m)
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
-			// 遍历响应中的 Answer 部分，查找 AAAA 记录
+			// Iterate through the Answer section of the response to find AAAA records.
 			for _, ans := range resp.Answer {
 				if aaaa, ok := ans.(*dns.AAAA); ok {
-					ip = aaaa.AAAA // 直接获取 net.IP 类型
-					break          // 只获取第一个 AAAA 记录
+					ip = aaaa.AAAA // Get the net.IP directly
+					break          // Take the first AAAA record found
 				}
 			}
 		}
 		ch6 <- lookupResult{ip, err}
 	}()
 
-	// 等待 A 和 AAAA 记录的查询结果
+	// Wait for both A and AAAA query results.
 	result4, result6 := <-ch4, <-ch6
 	reqAddr.ResolveInfo = &ResolveInfo{
 		IPv4: result4.ip,
 		IPv6: result6.ip,
 	}
-	// 如果 IPv4 查询有错误，则设置错误信息；否则如果 IPv6 查询有错误，则设置错误信息
+	// If IPv4 query had an error, set it; otherwise, if IPv6 query had an error, set it.
 	if result4.err != nil {
 		reqAddr.ResolveInfo.Err = result4.err
 	} else if result6.err != nil {
@@ -120,30 +147,57 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	}
 }
 
-// TCP 方法实现 PluggableOutbound 接口的 TCP 部分。
+// TCP implements the TCP part of the PluggableOutbound interface.
 func (r *dohResolver) TCP(reqAddr *AddrEx) (net.Conn, error) {
 	r.resolve(reqAddr)
 	return r.Next.TCP(reqAddr)
 }
 
-// UDP 方法实现 PluggableOutbound 接口的 UDP 部分。
+// UDP implements the UDP part of the PluggableOutbound interface.
 func (r *dohResolver) UDP(reqAddr *AddrEx) (UDPConn, error) {
 	r.resolve(reqAddr)
 	return r.Next.UDP(reqAddr)
 }
 
-// timeoutOrDefault 是一个辅助函数，用于提供默认超时时间。
-// 实际的实现应根据您的项目需求进行调整。
+// timeoutOrDefault is a helper function to provide a default timeout duration.
+// Adjust the default value as per your project requirements.
 func timeoutOrDefault(d time.Duration) time.Duration {
 	if d == 0 {
-		return 5 * time.Second // 默认超时时间
+		return 5 * time.Second // Default timeout
 	}
 	return d
 }
 
-// tryParseIP 是一个辅助函数，用于检查主机是否已经是 IP 地址。
-// 实际的实现应根据您的项目需求进行调整。
+// tryParseIP is a helper function to check if a host is already an IP address.
+// Adjust as per your project requirements.
 func tryParseIP(reqAddr *AddrEx) bool {
 	return net.ParseIP(reqAddr.Host) != nil
 }
 
+// Below are placeholder interface and struct definitions to make this code snippet compile independently.
+// They should be defined elsewhere in your 'outbounds' package.
+
+// AddrEx struct contains the request address and resolution information.
+type AddrEx struct {
+	Host        string
+	ResolveInfo *ResolveInfo
+}
+
+// ResolveInfo struct contains the resolved IPv4 and IPv6 addresses and potential error.
+type ResolveInfo struct {
+	IPv4 net.IP
+	IPv6 net.IP
+	Err  error
+}
+
+// PluggableOutbound interface defines methods for pluggable outbound connections.
+type PluggableOutbound interface {
+	TCP(reqAddr *AddrEx) (net.Conn, error)
+	UDP(reqAddr *AddrEx) (UDPConn, error)
+}
+
+// UDPConn interface defines the behavior of a UDP connection.
+type UDPConn interface {
+	net.PacketConn
+	// Add other methods if UDPConn has them (e.g., ReadFrom, WriteTo).
+}
