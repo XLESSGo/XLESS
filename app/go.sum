@@ -50,6 +50,8 @@ github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwTo
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f h1:uVh0qpEslrWjgzx9vOcyCqsOY3c9kofDZ1n+qaw35ZY=
 github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f/go.mod h1:xkkq9D4ygcldQQhKS/w9CadiCKwCngU7K9E3DaKahpM=
+github.com/bluele/gcache v0.0.2 h1:WcbfdXICg7G/DGBh1PFfcirkWOQV+v077yF1pSy3DGw=
+github.com/bluele/gcache v0.0.2/go.mod h1:m15KV+ECjptwSPxKhOhQoAFQVtUFjTVkc3H8o0t/fp0=
 github.com/caddyserver/certmagic v0.22.1 h1:FTI1H+N7UrVWx1mVW7Am0JrOtTNgJO/uOsIhjtDZM60=
 github.com/caddyserver/certmagic v0.22.1/go.mod h1:hbqE7BnkjhX5IJiFslPmrSeobSeZvI6ux8tyxhsd6qs=
 github.com/caddyserver/zerossl v0.1.3 h1:onS+pxp3M8HnHpN5MMbOMyNjmTheJyWRaZYwn+YTAyA=
@@ -171,8 +173,6 @@ github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc h1:RhT2pjLo3
 github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc/go.mod h1:BaIJzjD2ZnHmx2acPF6XfGLPzNCMiBbMRqJr+8/8uRI=
 github.com/jstemmer/go-junit-report v0.0.0-20190106144839-af01ea7f8024/go.mod h1:6v2b51hI/fHJwM22ozAgKL4VKDeJcHhJFhtBdhmNjmU=
 github.com/jstemmer/go-junit-report v0.9.1/go.mod h1:Brl9GWCQeLvo8nXZwPNNblvFj/XSXhF0NWZEnDohbsk=
-github.com/karlseguin/ccache/v3 v3.0.6 h1:6wC04CXSdptebuSUBgsQixNrrRMUdimtwmjlJUpCf/4=
-github.com/karlseguin/ccache/v3 v3.0.6/go.mod h1:b0qfdUOHl4vJgKFQN41paXIdBb3acAtyX2uWrBAZs1w=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=

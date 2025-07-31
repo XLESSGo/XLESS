@@ -33,6 +33,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a // indirect
@@ -48,7 +49,6 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc // indirect
-	github.com/karlseguin/ccache/v3 v3.0.6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/libdns/libdns v0.2.3 // indirect
