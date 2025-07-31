@@ -182,7 +182,7 @@ func ObfuscateModeDTLSHandshake(randSrc *mrand.Rand, segmentStateToken, nonce, e
 
 // DeobfuscateModeDTLSHandshake 从模仿的 DTLS 握手包中提取嵌入数据
 func DeobfuscateModeDTLSHandshake(in []byte) ([]byte, []byte, []byte, int, error) {
-	if len(in) < dtlsRecordHeaderLen + dtlsMinHandshakeLen {
+	if len(in) < dtlsRecordHeaderLen+dtlsMinHandshakeLen {
 		return nil, nil, nil, 0, fmt.Errorf("DTLS handshake packet too short")
 	}
 
@@ -210,10 +210,8 @@ func DeobfuscateModeDTLSHandshake(in []byte) ([]byte, []byte, []byte, int, error
 	if len(dtlsHandshakeMsg) < dtlsMinHandshakeLen + 32 {
 		return nil, nil, nil, 0, fmt.Errorf("DTLS ClientHello too short to extract embedded data")
 	}
-	// The 32-byte random field starts at offset 6 after the initial 12 bytes of Handshake Header (MsgType+Len+Seq+FragOff+FragLen+Version)
-	// So relative to handshakeMsg, it starts at byte 6 (MsgType:1 + Length:3 + Message Sequence:2 + Fragment Offset:3 + Fragment Length:3 + Version:2) = 14.
-	// No, it starts after MsgType(1)+Len(3)+MsgSeq(2)+FragOff(3)+FragLen(3)+Version(2) = 14 bytes
-	// So, random starts at index 14.
+	// The 32-byte random field starts at offset 6 after the initial 12 bytes of Handshake Header (MsgType+Len+MsgSeq+FragOff+FragLen+Version)
+	// So relative to handshakeMsg, it starts at byte 14.
 	extractedEmbeddedData := dtlsHandshakeMsg[14 : 14 + 32] // Taking the whole random for simplicity, assuming data is at the beginning
 
 	if len(extractedEmbeddedData) < SegmentStateTokenLen {
@@ -248,11 +246,11 @@ func DeobfuscateModeDTLSHandshake(in []byte) ([]byte, []byte, []byte, int, error
 
 
 const (
-	dnsHeaderLen     = 12
+	dnsHeaderLen      = 12
 	dnsQuestionMinLen = 5
-	dnsARecordType    = 0x0001
-	dnsINClass        = 0x0001
-	dnsMaxLabelLen    = 63
+	dnsARecordType    = 0x0001
+	dnsINClass        = 0x0001
+	dnsMaxLabelLen    = 63
 )
 
 func ObfuscateModeDNSQuery(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
@@ -496,11 +494,11 @@ func DeobfuscateModeNTPRequest(in []byte) ([]byte, []byte, []byte, int, error) {
 
 
 const (
-	decoyMagicLen     = 4
-	decoyMagic        = 0xDECAFBAD
-	decoyHMACSize     = HMACSize
-	decoyMinTotalLen  = decoyMagicLen + decoyHMACSize + MinDynamicPadding
-	decoyMaxTotalLen  = decoyMagicLen + decoyHMACSize + MaxDynamicPadding
+	decoyMagicLen      = 4
+	decoyMagic         = 0xDECAFBAD
+	decoyHMACSize      = HMACSize
+	decoyMinTotalLen   = decoyMagicLen + decoyHMACSize + MinDynamicPadding
+	decoyMaxTotalLen   = decoyMagicLen + decoyHMACSize + MaxDynamicPadding
 )
 
 func ObfuscateModeDecoy(randSrc *mrand.Rand, psk []byte, cumulativeHash []byte) ([]byte, error) {
