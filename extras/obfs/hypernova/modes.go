@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	mrand "math/rand"
-	"time" // Re-added "time" import as it's used in NTP mode for timestamps
 )
 
 // Disguise mode identifiers
