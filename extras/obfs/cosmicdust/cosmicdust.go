@@ -46,7 +46,7 @@ var _ Obfuscator = (*CosmicDustObfuscator)(nil)
 type CosmicDustObfuscator struct {
 	PSK []byte
 
-	lk             sync.Mutex
+	lk sync.Mutex
 	sendPacketID uint64
 	recvPacketID uint64
 
@@ -70,12 +70,12 @@ func NewCosmicDustObfuscator(psk []byte) (Obfuscator, error) {
 	}
 
 	return &CosmicDustObfuscator{
-		PSK:                  psk,
-		sendPacketID:         1,
-		recvPacketID:         1,
+		PSK:                   psk,
+		sendPacketID:          1,
+		recvPacketID:          1,
 		cumulativeStateHash: initialHash,
-		randSrc:              mrand.New(mrand.NewSource(time.Now().UnixNano())),
-		recvBuffer:           make(map[uint64]map[uint16][]byte),
+		randSrc:               mrand.New(mrand.NewSource(time.Now().UnixNano())),
+		recvBuffer:            make(map[uint64]map[uint16][]byte),
 		expectedTotalSegments: make(map[uint64]uint16),
 		currentReassembledSize: make(map[uint64]int),
 	}, nil
@@ -137,16 +137,21 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte, out []byte) int {
 
 		var physicalPacket []byte
 		switch chosenMode {
-		case ModeTLSAppData:
-			physicalPacket, err = ObfuscateModeTLSAppData(o.randSrc, segmentStateToken, nonce, encryptedSegment)
+		case ModeDTLSHandshake: // Updated from ModeTLSAppData
+			physicalPacket, err = ObfuscateModeDTLSHandshake(o.randSrc, segmentStateToken, nonce, encryptedSegment)
 		case ModeDNSQuery:
 			physicalPacket, err = ObfuscateModeDNSQuery(o.randSrc, segmentStateToken, nonce, encryptedSegment)
-		case ModeHTTPFragment:
-			physicalPacket, err = ObfuscateModeHTTPFragment(o.randSrc, segmentStateToken, nonce, encryptedSegment)
+		// Removed ModeHTTPFragment
 		case ModeNTPRequest:
 			physicalPacket, err = ObfuscateModeNTPRequest(o.randSrc, segmentStateToken, nonce, encryptedSegment)
+		case ModeDecoy: // ModeDecoy is now part of the switch for explicit selection
+			physicalPacket, err = ObfuscateModeDecoy(o.randSrc, o.PSK, o.cumulativeStateHash)
+			if err != nil {
+				// If decoy generation fails, log and continue, or handle as per desired behavior
+				return 0 // For now, treat as fatal for this packet
+			}
 		default:
-			return 0
+			return 0 // Should not happen if NumDisguiseModes is correct
 		}
 
 		if err != nil {
@@ -155,6 +160,12 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte, out []byte) int {
 		
 		concatenatedPhysicalPackets.Write(physicalPacket)
 
+		// Decoy packets are now part of the main switch,
+		// so this random insertion logic might need re-evaluation
+		// if you want *additional* decoy packets.
+		// For now, removing the separate decoy insertion to avoid double-counting
+		// if ModeDecoy is chosen via modeSelectorByte.
+		/*
 		if o.randSrc.Intn(DecoyFrequency) == 0 {
 			decoyPacket, err := ObfuscateModeDecoy(o.randSrc, o.PSK, o.cumulativeStateHash)
 			if err != nil {
@@ -163,6 +174,7 @@ func (o *CosmicDustObfuscator) Obfuscate(in []byte, out []byte) int {
 				concatenatedPhysicalPackets.Write(decoyPacket)
 			}
 		}
+		*/
 	}
 
 	newCumulativeHash, err := UpdateCumulativeHash(o.PSK, o.cumulativeStateHash, o.sendPacketID, in)
@@ -215,12 +227,11 @@ func (o *CosmicDustObfuscator) Deobfuscate(in []byte, out []byte) int {
 			err = nil // Reset error for each mode attempt
 
 			switch mode {
-			case ModeTLSAppData:
-				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeTLSAppData(segmentData)
+			case ModeDTLSHandshake: // Updated from ModeTLSAppData
+				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeDTLSHandshake(segmentData)
 			case ModeDNSQuery:
 				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeDNSQuery(segmentData)
-			case ModeHTTPFragment:
-				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeHTTPFragment(segmentData)
+			// Removed ModeHTTPFragment
 			case ModeNTPRequest:
 				segmentStateToken, segmentNonce, encryptedSegmentPayload, consumedBytes, err = DeobfuscateModeNTPRequest(segmentData)
 			case ModeDecoy:
