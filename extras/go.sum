@@ -2,6 +2,8 @@ github.com/XLESSGo/uquic v0.0.0 h1:Kd9HY23zHwCakSigfTSmiq2ivkwstxxzBpP+4jBMH+U=
 github.com/XLESSGo/uquic v0.0.0/go.mod h1:WeCSaUe/qvvPHhofkcyl2bifZ5J1QNRuCAIp/WJq+c8=
 github.com/andybalholm/brotli v1.1.1 h1:PR2pgnyFznKEugtsUo0xLdDop5SKXd5Qf5ysW+7XdTA=
 github.com/andybalholm/brotli v1.1.1/go.mod h1:05ib4cKhjx3OQYUY22hTVd34Bc8upXjOLL2rKwwZBoA=
+github.com/bluele/gcache v0.0.2 h1:WcbfdXICg7G/DGBh1PFfcirkWOQV+v077yF1pSy3DGw=
+github.com/bluele/gcache v0.0.2/go.mod h1:m15KV+ECjptwSPxKhOhQoAFQVtUFjTVkc3H8o0t/fp0=
 github.com/cloudflare/circl v1.6.1 h1:zqIqSPIndyBh1bjLVVDHMPpVKqp8Su/V+6MeDzzQBQ0=
 github.com/cloudflare/circl v1.6.1/go.mod h1:uddAzsPgqdMAYatqJ0lsjX1oECcQLIlRpzZh3pJrofs=
 github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a h1:t4SDi0pmNkryzKdM4QF3o5vqSP4GRjeZD/6j3nyxNP0=
@@ -22,8 +24,6 @@ github.com/google/pprof v0.0.0-20250501235452-c0086092b71a h1:rDA3FfmxwXR+BVKKdz
 github.com/google/pprof v0.0.0-20250501235452-c0086092b71a/go.mod h1:5hDyRhoBCxViHszMt12TnOpEI4VVi+U8Gm9iphldiMA=
 github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc h1:RhT2pjLo3EVRmldbEcBdeRA7CGPWsNEJC+Y/N1aXQbg=
 github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc/go.mod h1:BaIJzjD2ZnHmx2acPF6XfGLPzNCMiBbMRqJr+8/8uRI=
-github.com/karlseguin/ccache/v3 v3.0.6 h1:6wC04CXSdptebuSUBgsQixNrrRMUdimtwmjlJUpCf/4=
-github.com/karlseguin/ccache/v3 v3.0.6/go.mod h1:b0qfdUOHl4vJgKFQN41paXIdBb3acAtyX2uWrBAZs1w=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
