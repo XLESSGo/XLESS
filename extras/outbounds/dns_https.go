@@ -174,30 +174,3 @@ func tryParseIP(reqAddr *AddrEx) bool {
 	return net.ParseIP(reqAddr.Host) != nil
 }
 
-// Below are placeholder interface and struct definitions to make this code snippet compile independently.
-// They should be defined elsewhere in your 'outbounds' package.
-
-// AddrEx struct contains the request address and resolution information.
-type AddrEx struct {
-	Host        string
-	ResolveInfo *ResolveInfo
-}
-
-// ResolveInfo struct contains the resolved IPv4 and IPv6 addresses and potential error.
-type ResolveInfo struct {
-	IPv4 net.IP
-	IPv6 net.IP
-	Err  error
-}
-
-// PluggableOutbound interface defines methods for pluggable outbound connections.
-type PluggableOutbound interface {
-	TCP(reqAddr *AddrEx) (net.Conn, error)
-	UDP(reqAddr *AddrEx) (UDPConn, error)
-}
-
-// UDPConn interface defines the behavior of a UDP connection.
-type UDPConn interface {
-	net.PacketConn
-	// Add other methods if UDPConn has them (e.g., ReadFrom, WriteTo).
-}
