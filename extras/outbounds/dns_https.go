@@ -9,7 +9,7 @@ import (
 	"github.com/miekg/dns" // For building and parsing DNS messages
 	// Import the DoH client package from XLESSGo.
 	// Replace "github.com/XLESSGo/XLESS/extra/outbounds/doh" with the actual path if different.
-	doh "github.com/XLESSGo/XLESS/extra/outbounds/doh"
+	doh "github.com/XLESSGo/XLESS/extras/outbounds/doh"
 	"github.com/m13253/dns-over-https/v2/doh-client/selector" // Required by XLESSGo's doh.Client
 )
 
