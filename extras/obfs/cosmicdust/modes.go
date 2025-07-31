@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	ModeTLSAppData   = 0
-	ModeDNSQuery     = 1
-	ModeHTTPFragment = 2
-	ModeNTPRequest   = 3
-	ModeDecoy        = 4
-	NumDisguiseModes = 5
+	// 定义新的模式常量
+	ModeDTLSHandshake = 0 // Previously ModeTLSAppData, now mimicking DTLS
+	ModeDNSQuery      = 1
+	ModeNTPRequest    = 2
+	ModeDecoy         = 3
+	// 移除 ModeHTTPFragment
+
+	NumDisguiseModes = 4 // Total number of active disguise modes
 )
 
 func embedDataIntoVariableLengthField(data []byte, fieldLenBytes int) ([]byte, error) {
@@ -68,14 +70,17 @@ func extractDataFromVariableLengthField(in []byte, fieldLenBytes int) ([]byte, i
 }
 
 
+// --- 新增 DTLS 握手模式 ---
 const (
-	tlsRecordHeaderLen = 5
-	tlsAppDataRecordType = 0x17
-	tlsVersionTLS12      = 0x0303
-	tlsMinAppDataLen     = SegmentStateTokenLen + NonceLen + TagLen
+	dtlsRecordHeaderLen = 13 // Type (1) + Version (2) + Epoch (2) + Sequence Number (6) + Length (2)
+	dtlsHandshakeType   = 22 // Handshake
+	dtlsVersionTLS12    = 0xFEFD // DTLS 1.2 version
+	dtlsClientHelloType = 0x01   // ClientHello message type
+	dtlsMinHandshakeLen = 12 // Min ClientHello message len (MsgType+Len+Seq+FragOff+FragLen+Version+Random+SessionIDLen...)
 )
 
-func ObfuscateModeTLSAppData(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
+// ObfuscateModeDTLSHandshake 模仿 DTLS 1.2 ClientHello 握手包结构
+func ObfuscateModeDTLSHandshake(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
 	embeddedCoreData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
 	embeddedCoreData = append(embeddedCoreData, segmentStateToken...)
 	embeddedCoreData = append(embeddedCoreData, nonce...)
@@ -89,44 +94,132 @@ func ObfuscateModeTLSAppData(randSrc *mrand.Rand, segmentStateToken, nonce, encr
 	
 	finalEmbeddedData := append(embeddedCoreData, randomPadding...)
 
-	recordLen := len(finalEmbeddedData)
+	// DTLS Record Header
+	// Type (1 byte): Handshake (22)
+	// Version (2 bytes): DTLS 1.2 (0xFEFD)
+	// Epoch (2 bytes): 0 for initial handshake
+	// Sequence Number (6 bytes): Randomly generated for each record
+	// Length (2 bytes): Length of the DTLS handshake message
+
+	// DTLS Handshake Message (simplified ClientHello)
+	// MsgType (1 byte): ClientHello (0x01)
+	// Length (3 bytes): Length of the handshake message payload (excluding MsgType and its length field)
+	// Message Sequence (2 bytes): Handshake message sequence number (0 for first message)
+	// Fragment Offset (3 bytes): 0
+	// Fragment Length (3 bytes): Total length of the handshake message payload
+	// Version (2 bytes): TLS 1.2 (0x0303)
+	// Random (32 bytes): Client random bytes (can embed some data here)
+	// Session ID Length (1 byte): 0 (no session ID)
+	// Cipher Suites Length (2 bytes): Common cipher suites
+	// Cipher Suites (variable bytes)
+	// Compression Methods Length (1 byte): 1
+	// Compression Methods (1 byte): 0 (null)
+	// Extensions Length (2 bytes): Common extensions
+	// Extensions (variable bytes)
+
+	dtlsMsgBuf := new(bytes.Buffer)
+	
+	dtlsMsgBuf.WriteByte(dtlsClientHelloType) // Handshake Type: ClientHello
+	
+	// Placeholder for Handshake Message Length (3 bytes) - will be filled later
+	dtlsMsgBuf.Write([]byte{0x00, 0x00, 0x00}) 
+
+	binary.BigEndian.PutUint16(dtlsMsgBuf.Bytes()[dtlsMsgBuf.Len():], 0) // Message Sequence (0 for first)
+	dtlsMsgBuf.Write([]byte{0x00, 0x00}) // Advance buffer
+	dtlsMsgBuf.Write([]byte{0x00, 0x00, 0x00}) // Fragment Offset (0)
+	dtlsMsgBuf.Write([]byte{0x00, 0x00, 0x00}) // Fragment Length (placeholder)
+
+	binary.BigEndian.PutUint16(dtlsMsgBuf.Bytes()[dtlsMsgBuf.Len():], 0x0303) // TLS Version 1.2
+	dtlsMsgBuf.Write([]byte{0x00, 0x00}) // Advance buffer
+
+	// Random bytes (32 bytes) - can embed some data here
+	randomBytes := make([]byte, 32)
+	randSrc.Read(randomBytes)
+	copy(randomBytes[0:min(len(randomBytes), len(finalEmbeddedData))], finalEmbeddedData) // Embed data into random
+	dtlsMsgBuf.Write(randomBytes)
+
+	dtlsMsgBuf.WriteByte(0x00) // Session ID Length (0)
+
+	// Cipher Suites (example, common ones)
+	cipherSuites := []byte{
+		0xC0, 0x2B, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+		0xC0, 0x2F, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+		0x00, 0x9C, // TLS_RSA_WITH_AES_128_GCM_SHA256
+	}
+	binary.BigEndian.PutUint16(dtlsMsgBuf.Bytes()[dtlsMsgBuf.Len():], uint16(len(cipherSuites)))
+	dtlsMsgBuf.Write([]byte{0x00, 0x00}) // Advance buffer
+	dtlsMsgBuf.Write(cipherSuites)
+
+	dtlsMsgBuf.WriteByte(0x01) // Compression Methods Length (1)
+	dtlsMsgBuf.WriteByte(0x00) // Compression Method: Null (0)
+
+	// Extensions (placeholder, for simplicity)
+	dtlsMsgBuf.Write([]byte{0x00, 0x00}) // Extensions Length (0)
+
+	handshakeMsgPayload := dtlsMsgBuf.Bytes()
+	// Fill handshake message length
+	binary.BigEndian.PutUint32(handshakeMsgPayload[1:4], uint32(len(handshakeMsgPayload)-1)) // Total length after MsgType
+	binary.BigEndian.PutUint32(handshakeMsgPayload[9:12], uint32(len(handshakeMsgPayload)-1)) // Fragment Length
+
+	// DTLS Record Header
+	recordLen := len(handshakeMsgPayload)
 	if recordLen > math.MaxUint16 {
-		return nil, fmt.Errorf("TLS application data record too large: %d bytes", recordLen)
+		return nil, fmt.Errorf("DTLS record too large: %d bytes", recordLen)
 	}
 
-	packet := make([]byte, tlsRecordHeaderLen+recordLen)
-	packet[0] = tlsAppDataRecordType
-	binary.BigEndian.PutUint16(packet[1:3], tlsVersionTLS12)
-	binary.BigEndian.PutUint16(packet[3:5], uint16(recordLen))
-	copy(packet[tlsRecordHeaderLen:], finalEmbeddedData)
+	packet := make([]byte, dtlsRecordHeaderLen+recordLen)
+	packet[0] = dtlsHandshakeType // Record Type: Handshake
+	binary.BigEndian.PutUint16(packet[1:3], dtlsVersionTLS12) // DTLS Version 1.2
+	binary.BigEndian.PutUint16(packet[3:5], 0) // Epoch (0)
+	// Sequence Number (6 bytes) - simplified, usually derived from connection state
+	binary.BigEndian.PutUint32(packet[5:9], randSrc.Uint32()) // Just random for obfuscation
+	binary.BigEndian.PutUint16(packet[11:13], uint16(recordLen)) // Length of handshake message
+
+	copy(packet[dtlsRecordHeaderLen:], handshakeMsgPayload)
 
 	return packet, nil
 }
 
-func DeobfuscateModeTLSAppData(in []byte) ([]byte, []byte, []byte, int, error) {
-	if len(in) < tlsRecordHeaderLen+tlsMinAppDataLen {
-		return nil, nil, nil, 0, fmt.Errorf("TLS AppData packet too short")
+// DeobfuscateModeDTLSHandshake 从模仿的 DTLS 握手包中提取嵌入数据
+func DeobfuscateModeDTLSHandshake(in []byte) ([]byte, []byte, []byte, int, error) {
+	if len(in) < dtlsRecordHeaderLen + dtlsMinHandshakeLen {
+		return nil, nil, nil, 0, fmt.Errorf("DTLS handshake packet too short")
 	}
 
-	if in[0] != tlsAppDataRecordType {
-		return nil, nil, nil, 0, fmt.Errorf("incorrect TLS record type: 0x%X, expected 0x%X", in[0], tlsAppDataRecordType)
+	if in[0] != dtlsHandshakeType {
+		return nil, nil, nil, 0, fmt.Errorf("incorrect DTLS record type: 0x%X, expected 0x%X", in[0], dtlsHandshakeType)
 	}
-	if binary.BigEndian.Uint16(in[1:3]) != tlsVersionTLS12 {
-		return nil, nil, nil, 0, fmt.Errorf("TLS version mismatch: 0x%X, expected 0x%X", binary.BigEndian.Uint16(in[1:3]), tlsVersionTLS12)
+	if binary.BigEndian.Uint16(in[1:3]) != dtlsVersionTLS12 {
+		return nil, nil, nil, 0, fmt.Errorf("DTLS version mismatch: 0x%X, expected 0x%X", binary.BigEndian.Uint16(in[1:3]), dtlsVersionTLS12)
 	}
-	recordLen := int(binary.BigEndian.Uint16(in[3:5]))
+	recordLen := int(binary.BigEndian.Uint16(in[11:13]))
 	
-	totalPacketLen := tlsRecordHeaderLen + recordLen
+	totalPacketLen := dtlsRecordHeaderLen + recordLen
 	if len(in) < totalPacketLen {
-		return nil, nil, nil, 0, fmt.Errorf("TLS record truncated: header says %d bytes, but only %d available", recordLen, len(in)-tlsRecordHeaderLen)
+		return nil, nil, nil, 0, fmt.Errorf("DTLS record truncated: header says %d bytes, but only %d available", recordLen, len(in)-dtlsRecordHeaderLen)
 	}
 
-	finalEmbeddedData := in[tlsRecordHeaderLen:totalPacketLen]
+	dtlsHandshakeMsg := in[dtlsRecordHeaderLen:totalPacketLen]
 
-	if len(finalEmbeddedData) < SegmentStateTokenLen {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data too short for segment state token")
+	if dtlsHandshakeMsg[0] != dtlsClientHelloType {
+		return nil, nil, nil, 0, fmt.Errorf("DTLS handshake message type incorrect: 0x%X, expected ClientHello 0x%X", dtlsHandshakeMsg[0], dtlsClientHelloType)
 	}
-	segmentStateToken := finalEmbeddedData[0:SegmentStateTokenLen]
+
+	// Extract data from the random field of ClientHello (simplified)
+	// This assumes data was embedded at the start of the 32-byte random field
+	if len(dtlsHandshakeMsg) < dtlsMinHandshakeLen + 32 {
+		return nil, nil, nil, 0, fmt.Errorf("DTLS ClientHello too short to extract embedded data")
+	}
+	// The 32-byte random field starts at offset 6 after the initial 12 bytes of Handshake Header (MsgType+Len+Seq+FragOff+FragLen+Version)
+	// So relative to handshakeMsg, it starts at byte 6 (MsgType:1 + Length:3 + Message Sequence:2 + Fragment Offset:3 + Fragment Length:3 + Version:2) = 14.
+	// No, it starts after MsgType(1)+Len(3)+MsgSeq(2)+FragOff(3)+FragLen(3)+Version(2) = 14 bytes
+	// So, random starts at index 14.
+	extractedEmbeddedData := dtlsHandshakeMsg[14 : 14 + 32] // Taking the whole random for simplicity, assuming data is at the beginning
+
+	if len(extractedEmbeddedData) < SegmentStateTokenLen {
+		return nil, nil, nil, 0, fmt.Errorf("extracted embedded data too short for segment state token")
+	}
+	segmentStateToken := extractedEmbeddedData[0:SegmentStateTokenLen]
 	currentEmbeddedOffset := SegmentStateTokenLen
 
 	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
@@ -134,17 +227,17 @@ func DeobfuscateModeTLSAppData(in []byte) ([]byte, []byte, []byte, int, error) {
 		return nil, nil, nil, 0, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
 	}
 
-	if len(finalEmbeddedData)-currentEmbeddedOffset < NonceLen {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data too short for nonce")
+	if len(extractedEmbeddedData)-currentEmbeddedOffset < NonceLen {
+		return nil, nil, nil, 0, fmt.Errorf("extracted embedded data too short for nonce")
 	}
-	nonce := finalEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
+	nonce := extractedEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
 	currentEmbeddedOffset += NonceLen
 
 	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
-	if len(finalEmbeddedData) < expectedEncryptedEnd {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data truncated, encrypted payload shorter than specified in token")
+	if len(extractedEmbeddedData) < expectedEncryptedEnd {
+		return nil, nil, nil, 0, fmt.Errorf("extracted embedded data truncated, encrypted payload shorter than specified in token")
 	}
-	encryptedSegmentPayload := finalEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
+	encryptedSegmentPayload := extractedEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
 	
 	if len(encryptedSegmentPayload) < TagLen {
 		return nil, nil, nil, 0, fmt.Errorf("encrypted segment payload too short for tag")
@@ -155,11 +248,11 @@ func DeobfuscateModeTLSAppData(in []byte) ([]byte, []byte, []byte, int, error) {
 
 
 const (
-	dnsHeaderLen     = 12
+	dnsHeaderLen     = 12
 	dnsQuestionMinLen = 5
-	dnsARecordType    = 0x0001
-	dnsINClass        = 0x0001
-	dnsMaxLabelLen    = 63
+	dnsARecordType    = 0x0001
+	dnsINClass        = 0x0001
+	dnsMaxLabelLen    = 63
 )
 
 func ObfuscateModeDNSQuery(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
@@ -303,93 +396,7 @@ func DeobfuscateModeDNSQuery(in []byte) ([]byte, []byte, []byte, int, error) {
 }
 
 
-const (
-	httpFragmentMinLen = 100
-	httpCRLF           = "\r\n"
-	httpDoubleCRLF     = "\r\n\r\n"
-)
-
-func ObfuscateModeHTTPFragment(randSrc *mrand.Rand, segmentStateToken, nonce, encryptedSegmentPayload []byte) ([]byte, error) {
-	embeddedCoreData := make([]byte, 0, len(segmentStateToken)+len(nonce)+len(encryptedSegmentPayload))
-	embeddedCoreData = append(embeddedCoreData, segmentStateToken...)
-	embeddedCoreData = append(embeddedCoreData, nonce...)
-	embeddedCoreData = append(embeddedCoreData, encryptedSegmentPayload...)
-
-	paddingLen := randSrc.Intn(MaxDynamicPadding-MinDynamicPadding+1) + MinDynamicPadding
-	randomPadding, err := GenerateRandomBytes(paddingLen)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate random padding: %w", err)
-	}
-	
-	finalEmbeddedData := append(embeddedCoreData, randomPadding...)
-
-	chunkSize := len(finalEmbeddedData)
-	chunkSizeHex := []byte(fmt.Sprintf("%x%s", chunkSize, httpCRLF))
-
-	packet := new(bytes.Buffer)
-	packet.Write(chunkSizeHex)
-	packet.Write(finalEmbeddedData)
-	packet.WriteString(httpCRLF)
-
-	return packet.Bytes(), nil
-}
-
-func DeobfuscateModeHTTPFragment(in []byte) ([]byte, []byte, []byte, int, error) {
-	crlfIdx := bytes.Index(in, []byte(httpCRLF))
-	if crlfIdx == -1 {
-		return nil, nil, nil, 0, fmt.Errorf("HTTP fragment: no CRLF after chunk size")
-	}
-
-	chunkSizeHex := in[0:crlfIdx]
-	chunkSize, err := strconv.ParseInt(string(chunkSizeHex), 16, 64)
-	if err != nil {
-		return nil, nil, nil, 0, fmt.Errorf("HTTP fragment: invalid chunk size hex: %w", err)
-	}
-
-	chunkDataStart := crlfIdx + len(httpCRLF)
-	expectedChunkDataEnd := chunkDataStart + int(chunkSize)
-	
-	if len(in) < expectedChunkDataEnd {
-		return nil, nil, nil, 0, fmt.Errorf("HTTP fragment: data truncated, expected %d bytes, got %d", int(chunkSize), len(in)-chunkDataStart)
-	}
-
-	finalEmbeddedData := in[chunkDataStart:expectedChunkDataEnd]
-
-	if len(in) < expectedChunkDataEnd+len(httpCRLF) || !bytes.Equal(in[expectedChunkDataEnd:expectedChunkDataEnd+len(httpCRLF)], []byte(httpCRLF)) {
-		return nil, nil, nil, 0, fmt.Errorf("HTTP fragment: missing CRLF after chunk data")
-	}
-
-	if len(finalEmbeddedData) < SegmentStateTokenLen {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data too short for segment state token")
-	}
-	segmentStateToken := finalEmbeddedData[0:SegmentStateTokenLen]
-	currentEmbeddedOffset := SegmentStateTokenLen
-
-	_, _, _, encryptedPayloadLen, err := ExtractSegmentMetadata(segmentStateToken)
-	if err != nil {
-		return nil, nil, nil, 0, fmt.Errorf("failed to extract metadata from segment state token: %w", err)
-	}
-
-	if len(finalEmbeddedData)-currentEmbeddedOffset < NonceLen {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data too short for nonce")
-	}
-	nonce := finalEmbeddedData[currentEmbeddedOffset : currentEmbeddedOffset+NonceLen]
-	currentEmbeddedOffset += NonceLen
-
-	expectedEncryptedEnd := currentEmbeddedOffset + int(encryptedPayloadLen)
-	if len(finalEmbeddedData) < expectedEncryptedEnd {
-		return nil, nil, nil, 0, fmt.Errorf("embedded data truncated, encrypted payload shorter than specified in token")
-	}
-	encryptedSegmentPayload := finalEmbeddedData[currentEmbeddedOffset:expectedEncryptedEnd]
-	
-	if len(encryptedSegmentPayload) < TagLen {
-		return nil, nil, nil, 0, fmt.Errorf("encrypted segment payload too short for tag")
-	}
-
-	totalPacketLen := len(chunkSizeHex) + int(chunkSize) + len(httpCRLF)
-
-	return segmentStateToken, nonce, encryptedSegmentPayload, totalPacketLen, nil
-}
+// --- 移除 ObfuscateModeHTTPFragment 和 DeobfuscateModeHTTPFragment 函数 ---
 
 
 const (
@@ -489,11 +496,11 @@ func DeobfuscateModeNTPRequest(in []byte) ([]byte, []byte, []byte, int, error) {
 
 
 const (
-	decoyMagicLen     = 4
-	decoyMagic        = 0xDECAFBAD
-	decoyHMACSize     = HMACSize
-	decoyMinTotalLen  = decoyMagicLen + decoyHMACSize + MinDynamicPadding
-	decoyMaxTotalLen  = decoyMagicLen + decoyHMACSize + MaxDynamicPadding
+	decoyMagicLen     = 4
+	decoyMagic        = 0xDECAFBAD
+	decoyHMACSize     = HMACSize
+	decoyMinTotalLen  = decoyMagicLen + decoyHMACSize + MinDynamicPadding
+	decoyMaxTotalLen  = decoyMagicLen + decoyHMACSize + MaxDynamicPadding
 )
 
 func ObfuscateModeDecoy(randSrc *mrand.Rand, psk []byte, cumulativeHash []byte) ([]byte, error) {
