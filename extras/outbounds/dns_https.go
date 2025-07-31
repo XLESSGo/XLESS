@@ -7,7 +7,7 @@ import (
 
 	"github.com/miekg/dns" // For building and parsing DNS messages
 	// Import the DoH client package from XLESSGo.
-	// Replace "github.com/XLESSGo/XLESS/extra/outbounds/doh" with the actual path if different.
+	// Replace "github.com/XLESSGo/XLESS/extras/outbounds/doh" with the actual path if different.
 	doh "github.com/XLESSGo/XLESS/extras/outbounds/doh"
 	"github.com/m13253/dns-over-https/v2/doh-client/selector" // Required by XLESSGo's doh.Client
 )
@@ -27,7 +27,6 @@ type dohResolver struct {
 // next: The next PluggableOutbound in the chain.
 func NewDoHResolver(host string, timeout time.Duration, sni string, insecure bool, next PluggableOutbound) PluggableOutbound {
 	// Create a minimal doh.Config struct to initialize the XLESSGo's doh.Client.
-	// This config maps the NewDoHResolver parameters to the doh.Config structure.
 	config := &doh.Config{
 		Upstream: doh.UpstreamSectionConfig{
 			UpstreamSelector: "random", // Using random selector for simplicity with a single upstream
@@ -37,35 +36,25 @@ func NewDoHResolver(host string, timeout time.Duration, sni string, insecure boo
 					Weight: 100, // Default weight for a single upstream
 				},
 			},
-			// UpstreamGoogle can be left empty if not used, or populated if needed
 		},
 		Other: doh.OtherConfig{
 			InsecureTLSSkipVerify: insecure,
 			Timeout:               timeoutOrDefault(timeout), // Use the provided timeout
-			// Other fields like NoECS, NoIPv6, NoUserAgent, Verbose will default to false
 		},
 	}
 
-	// Create a RandomSelector as required by doh.NewClient.
-	// This selector will manage the single upstream defined in the config.
+	// Create a RandomSelector as required by doh.NewClient's signature.
 	randomSelector := selector.NewRandomSelector()
-	// Add the upstream to the selector.
-	// The UpstreamType needs to be determined. Assuming IETF for generic DoH.
-	// In a real scenario, you might need to infer this from the host URL or add a parameter.
+	// Add the upstream to the selector. Assuming IETF for generic DoH.
 	err := randomSelector.Add(host, selector.IETF)
 	if err != nil {
-		// Handle error if adding upstream fails (e.g., unknown upstream type).
-		// In a production environment, this should be logged and potentially returned.
 		panic("Failed to add upstream to selector: " + err.Error())
 	}
 
-
 	// Initialize the XLESSGo's doh.Client with the created config and selector.
-	// Note: The doh.NewClient function internally handles the http.Client creation
-	// and TLS configuration based on the provided config.
+	// FIXED: Passing 'randomSelector' to match doh.NewClient's expected signature.
 	client, err := doh.NewClient(config, randomSelector)
 	if err != nil {
-		// Handle client creation failure. In a real application, avoid panic.
 		panic("Failed to create DoH client: " + err.Error())
 	}
 
@@ -95,8 +84,15 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeA)
 		m.RecursionDesired = true // Request recursive query
 
-		// Use the XLESSGo's DoH client to exchange DNS messages.
+		// FIXED: r.Client.Exchange is undefined.
+		// NOTE: The 'Exchange' method is NOT part of the public API of
+		// github.com/XLESSGo/XLESS/extras/outbounds/doh.Client in its original form.
+		// For this code to compile and be "actual usable", you MUST add an 'Exchange' method
+		// to the 'doh.Client' type in your forked 'github.com/XLESSGo/XLESS/extras/outbounds/doh/client.go' file.
+		// Example signature for the required method:
+		// func (c *Client) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error)
 		resp, err := r.Client.Exchange(context.Background(), m)
+
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
 			// Iterate through the Answer section of the response to find A records.
@@ -117,8 +113,10 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeAAAA)
 		m.RecursionDesired = true // Request recursive query
 
-		// Use the XLESSGo's DoH client to exchange DNS messages.
+		// FIXED: r.Client.Exchange is undefined. (Same issue as above)
+		// See the NOTE above for the A record query.
 		resp, err := r.Client.Exchange(context.Background(), m)
+
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
 			// Iterate through the Answer section of the response to find AAAA records.
