@@ -6,60 +6,71 @@ import (
 	"time"
 
 	"github.com/miekg/dns" // For building and parsing DNS messages
-	// Import the DoH client package from XLESSGo.
-	// Replace "github.com/XLESSGo/XLESS/extras/outbounds/doh" with the actual path if different.
-	doh "github.com/XLESSGo/XLESS/extras/outbounds/doh"
-	"github.com/m13253/dns-over-https/v2/doh-client/selector" // Required by XLESSGo's doh.Client
+	doh "github.com/XLESSGo/XLESS/extras/outbounds/doh" // XLESSGo's DoH package
+	// selector is still imported as doh.NewClient might internally use it.
+	"github.com/m13253/dns-over-https/v2/doh-client/selector"
 )
 
 // dohResolver is a PluggableOutbound DNS resolver that resolves hostnames
 // using the user-provided DNS-over-HTTPS server from the XLESSGo project.
 type dohResolver struct {
-	Client *doh.Client // The DoH client instance from github.com/XLESSGo/XLESS/extra/outbounds/doh
+	Client *doh.Client // The DoH client instance from github.com/XLESSGo/XLESS/extras/outbounds/doh
+	// httpClient is no longer needed here as doh.Client will expose Exchange method.
 	Next   PluggableOutbound
 }
 
 // NewDoHResolver creates a new dohResolver instance.
-// host: The full URL of the DoH service (e.g., "https://dns.google/dns-query").
+// host: The full URL of the DoH service.
 // timeout: Timeout for DNS queries.
 // sni: Server Name Indication for TLS connections.
-// insecure: If true, skips TLS certificate verification (ONLY for testing, NOT recommended for production).
+// insecure: If true, skips TLS certificate verification (NOT recommended for production).
 // next: The next PluggableOutbound in the chain.
 func NewDoHResolver(host string, timeout time.Duration, sni string, insecure bool, next PluggableOutbound) PluggableOutbound {
-	// Create a minimal doh.Config struct to initialize the XLESSGo's doh.Client.
+	// Create doh.Config for XLESSGo's doh.Client.
 	config := &doh.Config{
 		Upstream: doh.UpstreamSectionConfig{
-			UpstreamSelector: "random", // Using random selector for simplicity with a single upstream
-			UpstreamIETF: []doh.UpstreamConfig{ // Assuming the host is an IETF-style DoH endpoint
-				{
-					URL:    host,
-					Weight: 100, // Default weight for a single upstream
-				},
+			UpstreamSelector: "random",
+			UpstreamIETF: []doh.UpstreamConfig{
+				{URL: host, Weight: 100},
 			},
 		},
 		Other: doh.OtherConfig{
 			InsecureTLSSkipVerify: insecure,
-			Timeout:               timeoutOrDefault(timeout), // Use the provided timeout
+			Timeout:               timeoutOrDefault(timeout),
 		},
 	}
 
-	// Create a RandomSelector as required by doh.NewClient's signature.
-	randomSelector := selector.NewRandomSelector()
-	// Add the upstream to the selector. Assuming IETF for generic DoH.
-	err := randomSelector.Add(host, selector.IETF)
-	if err != nil {
-		panic("Failed to add upstream to selector: " + err.Error())
-	}
+	// Although randomSelector is created, it's not passed directly to doh.NewClient
+	// based on the compilation error "too many arguments".
+	// The selector setup should be handled internally by doh.NewClient based on the config.
+	_ = selector.NewRandomSelector() // Keep this line if it's used elsewhere, otherwise remove.
+	// The `randomSelector.Add` call is also not directly relevant here if NewClient only takes config.
+	// If XLESSGo's doh.NewClient internally uses the selector package, it will handle this.
+	// For now, we assume the config fully dictates the upstream setup.
 
-	// Initialize the XLESSGo's doh.Client with the created config and selector.
-	// FIXED: Passing 'randomSelector' to match doh.NewClient's expected signature.
-	client, err := doh.NewClient(config, randomSelector)
+	// Initialize XLESSGo's doh.Client.
+	// FIXED: Removed 'randomSelector' argument to resolve "too many arguments" error.
+	client, err := doh.NewClient(config)
 	if err != nil {
 		panic("Failed to create DoH client: " + err.Error())
 	}
 
+	// Custom HTTP client is no longer needed here as doh.Client will expose Exchange method.
+	// tr := &http.Transport{
+	// 	TLSClientConfig: &tls.Config{
+	// 		ServerName:         sni,
+	// 		InsecureSkipVerify: insecure,
+	// 	},
+	// 	DisableKeepAlives: true,
+	// }
+	// httpClient := &http.Client{
+	// 	Transport: tr,
+	// 	Timeout:   timeoutOrDefault(timeout),
+	// }
+
 	return &dohResolver{
 		Client: client,
+		// httpClient: httpClient, // Removed
 		Next:   next,
 	}
 }
@@ -67,7 +78,6 @@ func NewDoHResolver(host string, timeout time.Duration, sni string, insecure boo
 // resolve performs DNS resolution for the given AddrEx using the DoH client.
 func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	if tryParseIP(reqAddr) {
-		// If the host is already an IP address, no resolution is needed.
 		return
 	}
 
@@ -80,26 +90,17 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	// Asynchronously query for A records (IPv4).
 	go func() {
 		m := new(dns.Msg)
-		// Set the DNS question for A record, converting hostname to FQDN.
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeA)
-		m.RecursionDesired = true // Request recursive query
+		m.RecursionDesired = true
 
-		// FIXED: r.Client.Exchange is undefined.
-		// NOTE: The 'Exchange' method is NOT part of the public API of
-		// github.com/XLESSGo/XLESS/extras/outbounds/doh.Client in its original form.
-		// For this code to compile and be "actual usable", you MUST add an 'Exchange' method
-		// to the 'doh.Client' type in your forked 'github.com/XLESSGo/XLESS/extras/outbounds/doh/client.go' file.
-		// Example signature for the required method:
-		// func (c *Client) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error)
+		// FIXED: r.Client.Exchange is now defined in doh/doh.go.
 		resp, err := r.Client.Exchange(context.Background(), m)
-
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
-			// Iterate through the Answer section of the response to find A records.
 			for _, ans := range resp.Answer {
 				if a, ok := ans.(*dns.A); ok {
-					ip = a.A // Get the net.IP directly
-					break    // Take the first A record found
+					ip = a.A
+					break
 				}
 			}
 		}
@@ -109,34 +110,28 @@ func (r *dohResolver) resolve(reqAddr *AddrEx) {
 	// Asynchronously query for AAAA records (IPv6).
 	go func() {
 		m := new(dns.Msg)
-		// Set the DNS question for AAAA record, converting hostname to FQDN.
 		m.SetQuestion(dns.Fqdn(reqAddr.Host), dns.TypeAAAA)
-		m.RecursionDesired = true // Request recursive query
+		m.RecursionDesired = true
 
-		// FIXED: r.Client.Exchange is undefined. (Same issue as above)
-		// See the NOTE above for the A record query.
+		// FIXED: r.Client.Exchange is now defined in doh/doh.go.
 		resp, err := r.Client.Exchange(context.Background(), m)
-
 		var ip net.IP
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
-			// Iterate through the Answer section of the response to find AAAA records.
 			for _, ans := range resp.Answer {
 				if aaaa, ok := ans.(*dns.AAAA); ok {
-					ip = aaaa.AAAA // Get the net.IP directly
-					break          // Take the first AAAA record found
+					ip = aaaa.AAAA
+					break
 				}
 			}
 		}
 		ch6 <- lookupResult{ip, err}
 	}()
 
-	// Wait for both A and AAAA query results.
 	result4, result6 := <-ch4, <-ch6
 	reqAddr.ResolveInfo = &ResolveInfo{
 		IPv4: result4.ip,
 		IPv6: result6.ip,
 	}
-	// If IPv4 query had an error, set it; otherwise, if IPv6 query had an error, set it.
 	if result4.err != nil {
 		reqAddr.ResolveInfo.Err = result4.err
 	} else if result6.err != nil {
