@@ -2,9 +2,6 @@ package obfs
 
 import (
 	"fmt"
-
-	hypernova "github.com/XLESSGo/XLESS/extras/obfs/hypernova"
-	cosmicdust "github.com/XLESSGo/XLESS/extras/obfs/cosmicdust"
 )
 
 // Obfuscator is the interface that wraps the Obfuscate and Deobfuscate methods.
@@ -33,25 +30,6 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return nil, nil // Return nil Obfuscator, indicating no obfuscation
 	case "salamander":
 		return NewSalamanderObfuscator([]byte(cfg.Password))
-	case "scramble":
-		return NewScrambleObfuscator([]byte(cfg.Password))
-	case "chameleon":
-		return NewChameleonObfuscator([]byte(cfg.Password))
-	case "polymorph":
-		return NewPolyMorphObfuscator([]byte(cfg.Password))
-	case "timewarp":
-		return NewTimeWarpObfuscator([]byte(cfg.Password))
-	case "nebula":
-		return NewNebulaObfuscator([]byte(cfg.Password))
-	case "quantumshuffle":
-		// For QuantumShuffle, the password is also used for key derivation and randomness seeding.
-		return NewQuantumShuffleObfuscator([]byte(cfg.Password))
-	case "hypernova":
-		// Use the NewHypernovaObfuscator from the new hypernova package
-		return hypernova.NewHypernovaObfuscator([]byte(cfg.Password))
-	case "cosmicdust":
-		// Use the NewCosmicDustObfuscator from the new cosmicdust package
-		return cosmicdust.NewCosmicDustObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
