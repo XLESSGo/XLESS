@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32" // 用于 CRC32 校验
+	"math"
 
 	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
 )
@@ -123,14 +124,15 @@ func (p *AuthAProtocol) addAuthHeader(originalData []byte) ([]byte, error) {
 
 	// 计算 CRC32：crc32(secret + originalData)
 	hasher := crc32.NewIEEE()
-	_, _ = hasher.Write(p.secret)       // 先写入密钥
+	_, _ = hasher.Write(p.secret) // 先写入密钥
 	_, _ = hasher.Write(originalData) // 再写入原始数据
 	checksum := hasher.Sum32()
 	binary.BigEndian.PutUint32(header[0:4], checksum) // 将 CRC32 写入头部前 4 字节
 
 	// 写入原始数据长度
 	// 检查原始数据长度是否超出 uint32 最大值
-	if len(originalData) > 0xFFFFFFFF { 
+	// 使用 uint64 进行比较，以确保在 64 位系统上也能正确处理
+	if uint64(len(originalData)) > math.MaxUint32 {
 		return nil, errors.New("auth_a: original data too large, exceeds uint32 max length")
 	}
 	binary.BigEndian.PutUint32(header[4:8], uint32(len(originalData))) // 将原始数据长度写入头部后 4 字节
