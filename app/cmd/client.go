@@ -282,7 +282,7 @@ func (c *clientConfig) fillProtocolConfig(hyConfig *client.Config) error {
 		if c.ProtocolParam == "" {
 			return configError{Field: "protocolParam", Err: fmt.Errorf("auth_a need a ProtocolParam")}
 		}
-		hyConfig.Protocol = ProtocolTypeAuthA
+		hyConfig.Protocol = client.ProtocolTypeAuthA
 		hyConfig.ProtocolParam = c.ProtocolParam
 	// 添加更多 case 来处理其他协议类型
 	default:
