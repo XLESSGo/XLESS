@@ -1,9 +1,28 @@
 version: 2
 updates:
+  # 更新 /app 目录下的 Go 模块依赖
   - package-ecosystem: "gomod"
-    directory: "/"
+    directory: "/app"
     schedule:
       interval: "daily"
+    # 可选：如果模块名称与目录不同，可以在这里指定
+    # target-branch: "main" # 目标分支
+
+  # 更新 /core 目录下的 Go 模块依赖
+  - package-ecosystem: "gomod"
+    directory: "/core"
+    schedule:
+      interval: "daily"
+    # target-branch: "main"
+
+  # 更新 /extras 目录下的 Go 模块依赖
+  - package-ecosystem: "gomod"
+    directory: "/extras"
+    schedule:
+      interval: "daily"
+    # target-branch: "main"
+
+  # 更新 GitHub Actions 依赖
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
