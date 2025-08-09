@@ -8,7 +8,7 @@ require (
 	github.com/XLESSGo/XLESS/core v0.0.0
 	github.com/XLESSGo/XLESS/extras v0.0.0
 	github.com/XLESSGo/protean v0.0.0
-	github.com/XLESSGo/uquic v0.0.0
+	github.com/XLESSGo/uquic v0.0.2
 	github.com/XLESSGo/water v0.0.0
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/caddyserver/certmagic v0.22.1

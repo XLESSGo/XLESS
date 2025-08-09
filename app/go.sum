@@ -42,8 +42,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/XLESSGo/protean v0.0.0 h1:stdbgMHRvECUiEwSIyKFzgFjkOrZ0Y2vW7ubHMYbF38=
 github.com/XLESSGo/protean v0.0.0/go.mod h1:wFVyl/erSqPBW51L3yZ8QwD4i/KFUVhNK0+NiJouCps=
-github.com/XLESSGo/uquic v0.0.0 h1:Kd9HY23zHwCakSigfTSmiq2ivkwstxxzBpP+4jBMH+U=
-github.com/XLESSGo/uquic v0.0.0/go.mod h1:WeCSaUe/qvvPHhofkcyl2bifZ5J1QNRuCAIp/WJq+c8=
+github.com/XLESSGo/uquic v0.0.2 h1:CKFWXQIEno2cD6c9/dgLoQ16FReDLZkfn1MybZOMLlg=
+github.com/XLESSGo/uquic v0.0.2/go.mod h1:WeCSaUe/qvvPHhofkcyl2bifZ5J1QNRuCAIp/WJq+c8=
 github.com/XLESSGo/water v0.0.0 h1:jlrfcSeSz1QKF+mPwVTQK+oRryScbhj1r6pXwPjx88Y=
 github.com/XLESSGo/water v0.0.0/go.mod h1:NfEDBx7oqmyy5t7IvxpJs2ljpnVipqc0me5X9hPw8RY=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
