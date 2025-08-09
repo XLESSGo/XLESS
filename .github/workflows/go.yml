@@ -25,6 +25,9 @@ jobs:
         run: go version
       - name: Build app module # 构建 'app' 模块
         working-directory: ./app # 在 'app' 目录下执行命令
+        env:
+          GOOS: linux
+          GOARCH: 386
         run: go build -v ./...
       - name: Test app module # 测试 'app' 模块
         working-directory: ./app # 在 'app' 目录下执行命令
@@ -47,6 +50,9 @@ jobs:
         run: go version
       - name: Build core module # 构建 'core' 模块
         working-directory: ./core # 在 'core' 目录下执行命令
+        env:
+          GOOS: linux
+          GOARCH: 386
         run: go build -v ./...
       - name: Test core module # 测试 'core' 模块
         working-directory: ./core # 在 'core' 目录下执行命令
@@ -69,6 +75,9 @@ jobs:
         run: go version
       - name: Build extras module # 构建 'extras' 模块
         working-directory: ./extras # 在 'extras' 目录下执行命令
+        env:
+          GOOS: linux
+          GOARCH: 386
         run: go build -v ./...
       - name: Test extras module # 测试 'extras' 模块
         working-directory: ./extras # 在 'extras' 目录下执行命令

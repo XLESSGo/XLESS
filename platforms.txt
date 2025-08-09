@@ -3,6 +3,7 @@
 # Windows
 windows/amd64
 windows/amd64-avx
+windows/386
 windows/arm64
 
 # macOS
@@ -13,6 +14,7 @@ darwin/arm64
 # Linux
 linux/amd64
 linux/amd64-avx
+linux/386
 linux/arm
 linux/armv5
 linux/arm64
@@ -23,6 +25,7 @@ linux/riscv64
 linux/loong64
 
 # Android
+android/386
 android/amd64
 android/armv7
 android/arm64
@@ -30,5 +33,6 @@ android/arm64
 # FreeBSD
 freebsd/amd64
 freebsd/amd64-avx
+freebsd/386
 freebsd/arm
 freebsd/arm64
