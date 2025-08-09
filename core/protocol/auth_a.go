@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32" // 用于 CRC32 校验
+
+	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
 )
 
 const (
@@ -37,7 +39,7 @@ func (p *AuthAProtocol) Init(param string) error {
 }
 
 // Obfuscate 施加混淆逻辑。
-func (p *AuthAProtocol) Obfuscate(data ProtocolData, ctx protocol_ext.ProtocolContext) (ProtocolData, error) {
+func (p *AuthAProtocol) Obfuscate(data ProtocolData, ctx ProtocolContext) (ProtocolData, error) {
 	switch ctx.Type {
 	case "tcp_request":
 		// 对于 TCP 请求 (目标地址字符串)，暂时不做修改，直接透传。
@@ -77,7 +79,7 @@ func (p *AuthAProtocol) Obfuscate(data ProtocolData, ctx protocol_ext.ProtocolCo
 }
 
 // Deobfuscate 反转混淆逻辑。
-func (p *AuthAProtocol) Deobfuscate(data ProtocolData, ctx ProtocolContext) (protocol_ext.ProtocolData, error) {
+func (p *AuthAProtocol) Deobfuscate(data ProtocolData, ctx ProtocolContext) (ProtocolData, error) {
 	switch ctx.Type {
 	case "tcp_request":
 		// 对于 TCP 请求，直接透传。
