@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32" // 用于 CRC32 校验
-	// 导入核心协议接口包，并使用别名 protocol_ext
-	// 导入 internal/protocol 包以访问 UDPMessage 结构体
-	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
 )
 
 const (
@@ -40,7 +37,7 @@ func (p *AuthAProtocol) Init(param string) error {
 }
 
 // Obfuscate 施加混淆逻辑。
-func (p *AuthAProtocol) Obfuscate(data protocol_ext.ProtocolData, ctx protocol_ext.ProtocolContext) (protocol_ext.ProtocolData, error) {
+func (p *AuthAProtocol) Obfuscate(data protocol_ext.ProtocolData, ctx protocol_ext.ProtocolContext) (ProtocolData, error) {
 	switch ctx.Type {
 	case "tcp_request":
 		// 对于 TCP 请求 (目标地址字符串)，暂时不做修改，直接透传。
@@ -80,7 +77,7 @@ func (p *AuthAProtocol) Obfuscate(data protocol_ext.ProtocolData, ctx protocol_e
 }
 
 // Deobfuscate 反转混淆逻辑。
-func (p *AuthAProtocol) Deobfuscate(data protocol_ext.ProtocolData, ctx protocol_ext.ProtocolContext) (protocol_ext.ProtocolData, error) {
+func (p *AuthAProtocol) Deobfuscate(data protocol_ext.ProtocolData, ctx ProtocolContext) (protocol_ext.ProtocolData, error) {
 	switch ctx.Type {
 	case "tcp_request":
 		// 对于 TCP 请求，直接透传。
@@ -170,7 +167,7 @@ func (p *AuthAProtocol) removeAuthHeader(obfuscatedData []byte) ([]byte, error) 
 
 // init 函数用于注册 AuthAProtocol 插件。
 func init() {
-	protocol_ext.RegisterProtocol("auth_a", func() protocol_ext.Protocol {
+	RegisterProtocol("auth_a", func() protocol_ext.Protocol {
 		return &AuthAProtocol{}
 	})
 }
