@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.2
 
 require (
-	github.com/XLESSGo/uquic v0.0.0
+	github.com/XLESSGo/uquic v0.0.2
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/goleak v1.2.1
