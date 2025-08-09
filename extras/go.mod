@@ -11,7 +11,7 @@ require (
 	github.com/database64128/tfo-go/v2 v2.3.0
 	github.com/m13253/dns-over-https/v2 v2.3.10
 	github.com/miekg/dns v1.1.64
-	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
+	github.com/refraction-networking/utls v1.8.0
 	github.com/stretchr/testify v1.10.0
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
 	golang.org/x/crypto v0.38.0
@@ -21,7 +21,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/database64128/netx-go v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
