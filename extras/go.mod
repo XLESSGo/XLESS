@@ -8,7 +8,7 @@ require (
 	github.com/XLESSGo/XLESS/core v0.0.0-20250724143135-0a316cc69029
 	github.com/XLESSGo/uquic v0.0.0
 	github.com/bluele/gcache v0.0.2
-	github.com/database64128/tfo-go/v2 v2.2.2
+	github.com/database64128/tfo-go/v2 v2.3.0
 	github.com/m13253/dns-over-https/v2 v2.3.10
 	github.com/miekg/dns v1.1.64
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
@@ -22,7 +22,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
-	github.com/database64128/netx-go v0.0.0-20240905055117-62795b8b054a // indirect
+	github.com/database64128/netx-go v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
@@ -41,7 +41,7 @@ require (
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
