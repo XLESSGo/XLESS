@@ -584,7 +584,7 @@ func (c *serverConfig) fillProtocolConfig(hyConfig *server.Config) error {
 		if c.ProtocolParam == "" {
 			return configError{Field: "protocolParam", Err: fmt.Errorf("auth_a need a ProtocolParam")}
 		}
-		hyConfig.Protocol = ProtocolTypeAuthA
+		hyConfig.Protocol = server.ProtocolTypeAuthA
 		hyConfig.ProtocolParam = c.ProtocolParam
 	default:
 		return configError{Field: "protocol", Err: fmt.Errorf("unsupported protocol type: %s", c.Protocol)}
