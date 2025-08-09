@@ -6,7 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/XLESSGo/XLESS/core v0.0.0-20250724143135-0a316cc69029
-	github.com/XLESSGo/uquic v0.0.0
+	github.com/XLESSGo/uquic v0.0.2
 	github.com/bluele/gcache v0.0.2
 	github.com/database64128/tfo-go/v2 v2.2.2
 	github.com/m13253/dns-over-https/v2 v2.3.10
