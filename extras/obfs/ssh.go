@@ -9,7 +9,6 @@ import (
 	"golang.org/x/crypto/blake2b"
 	mrand "math/rand"
 	"sync"
-	"time"
 )
 
 const (
@@ -51,7 +50,9 @@ func NewSshObfuscator(psk []byte) (*SshObfuscator, error) {
 
 // sshDeriveAESKey derives a 256-bit AES key from the PSK using BLAKE2b.
 func (o *SshObfuscator) sshDeriveAESKey() []byte {
-	return blake2b.Sum256(o.PSK)
+	// blake2b.Sum256 returns an array, so we need to slice it to return []byte
+	key := blake2b.Sum256(o.PSK)
+	return key[:]
 }
 
 // Obfuscate wraps the payload in a fake SSH packet based on the current state.
@@ -60,7 +61,6 @@ func (o *SshObfuscator) Obfuscate(in, out []byte) int {
 	defer o.lk.Unlock()
 
 	var packet []byte
-	var payloadLen int
 	var err error
 
 	if len(in) == 0 {
