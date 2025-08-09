@@ -8,7 +8,7 @@ require (
 	github.com/XLESSGo/uquic v0.0.0
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/stretchr/testify v1.10.0
-	go.uber.org/goleak v1.2.1
+	go.uber.org/goleak v1.3.0
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
 )
 
