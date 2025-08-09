@@ -22,6 +22,7 @@ type ProtocolType string
 
 const (
 	ProtocolTypeDefault  ProtocolType = "default" // 默认协议类型
+	ProtocolTypeAuthA    ProtocolType = "auth_a"
 )
 
 type Config struct {

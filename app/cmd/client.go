@@ -277,6 +277,13 @@ func (c *clientConfig) fillProtocolConfig(hyConfig *client.Config) error {
 		// 默认协议，可能不需要额外设置，或者使用默认值
 		hyConfig.Protocol = client.ProtocolTypeDefault // 假设 client.ProtocolTypeDefault 是一个常量
 		hyConfig.ProtocolParam = ""
+	case "auth_a":
+		// 如果是 auth_a 协议，则设置协议类型并传递密钥参数
+		if c.ProtocolParam == "" {
+			return configError{Field: "protocolParam", Err: fmt.Errorf("auth_a need a ProtocolParam")}
+		}
+		hyConfig.Protocol = client.ProtocolTypeAuthA
+		hyConfig.ProtocolParam = c.ProtocolParam
 	// 添加更多 case 来处理其他协议类型
 	default:
 		return configError{Field: "protocol", Err: fmt.Errorf("unsupported protocol type: %s", c.Protocol)}
