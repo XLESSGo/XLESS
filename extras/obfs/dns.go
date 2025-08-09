@@ -1,6 +1,7 @@
 package obfs
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -8,8 +9,9 @@ import (
 	"fmt"
 	"golang.org/x/crypto/blake2b"
 	mrand "math/rand"
+	"strings"
 	"sync"
-	"time" // Added time import for math/rand seed
+	"time"
 )
 
 const (
@@ -21,6 +23,7 @@ const (
 	// Max random padding for various sections of the DNS packet.
 	dnsMaxQuestionNameLen = 128
 	dnsMaxPayloadLen      = 512
+	dnsPayloadLenBytes    = 2  // Number of bytes to encode the payload length
 )
 
 // DnsObfuscator is an obfuscator that mimics a DNS A record query.
@@ -51,7 +54,7 @@ func (o *DnsObfuscator) dnsDeriveAESKey() []byte {
 }
 
 // Obfuscate wraps the payload in a fake DNS query.
-func (o *DnsObfuscate) Obfuscate(in, out []byte) int {
+func (o *DnsObfuscator) Obfuscate(in, out []byte) int {
 	o.lk.Lock()
 	defer o.lk.Unlock()
 
@@ -69,20 +72,33 @@ func (o *DnsObfuscate) Obfuscate(in, out []byte) int {
 	if _, err := rand.Read(nonce); err != nil {
 		return 0
 	}
+	
 	encryptedPayloadWithTag := aesgcm.Seal(nil, nonce, in, nil)
-	payloadWithNonceAndTag := append(nonce, encryptedPayloadWithTag...)
 
-	// 2. Pad the payload with random data to mimic a plausible DNS query name length
-	paddingLen := o.randSrc.Intn(dnsMaxQuestionNameLen-len(payloadWithNonceAndTag)) + 1
-	padding := make([]byte, paddingLen)
-	if _, err := rand.Read(padding); err != nil {
+	// 2. Prepend the length of the encrypted payload to the data.
+	// This is a robust way to signal the end of the real data.
+	encryptedPayloadLen := uint16(len(encryptedPayloadWithTag))
+	payloadWithLenNonceAndTag := make([]byte, dnsPayloadLenBytes+dnsNonceLen+len(encryptedPayloadWithTag))
+	binary.BigEndian.PutUint16(payloadWithLenNonceAndTag[:dnsPayloadLenBytes], encryptedPayloadLen)
+	copy(payloadWithLenNonceAndTag[dnsPayloadLenBytes:dnsPayloadLenBytes+dnsNonceLen], nonce)
+	copy(payloadWithLenNonceAndTag[dnsPayloadLenBytes+dnsNonceLen:], encryptedPayloadWithTag)
+
+
+	// 3. Pad the data with random bytes to mimic a plausible DNS query name length.
+	totalPayloadLen := len(payloadWithLenNonceAndTag)
+	if totalPayloadLen > dnsMaxQuestionNameLen {
+		// Payload is already too long to fit in a single label.
+		// A real-world implementation might fragment it, but for this example, we return 0.
 		return 0
 	}
-	obfuscatedName := append(payloadWithNonceAndTag, padding...)
-
-	// 3. Split the name into labels for DNS format (e.g., "label1.label2.com")
-	// This is a simplified approach for demonstration. A real-world version
-	// would need to handle this more robustly.
+	paddingLen := o.randSrc.Intn(dnsMaxQuestionNameLen-totalPayloadLen) + 1
+	obfuscatedName := make([]byte, totalPayloadLen+paddingLen)
+	copy(obfuscatedName[:totalPayloadLen], payloadWithLenNonceAndTag)
+	if _, err := rand.Read(obfuscatedName[totalPayloadLen:]); err != nil {
+		return 0
+	}
+	
+	// 4. Split the name into labels for DNS format (e.g., "label1.label2.com")
 	domain := "example.com"
 	domainLabels := strings.Split(domain, ".")
 	dnsLabels := [][]byte{}
@@ -91,9 +107,10 @@ func (o *DnsObfuscate) Obfuscate(in, out []byte) int {
 		dnsLabels = append(dnsLabels, []byte(label))
 	}
 
-	// 4. Build the DNS query packet
+	// 5. Build the DNS query packet
 	packet := new(bytes.Buffer)
 	// Header (12 bytes)
+	packet.Grow(dnsMaxPayloadLen)
 	binary.BigEndian.PutUint16(packet.Bytes(), uint16(o.randSrc.Intn(0xFFFF))) // ID
 	packet.WriteByte(0x01) // Flags (QR=0, Opcode=0, AA=0, TC=0, RD=1)
 	packet.WriteByte(0x00)
@@ -119,7 +136,7 @@ func (o *DnsObfuscate) Obfuscate(in, out []byte) int {
 }
 
 // Deobfuscate extracts the encrypted payload from a fake DNS query and decrypts it.
-func (o *DnsObfuscate) Deobfuscate(in, out []byte) int {
+func (o *DnsObfuscator) Deobfuscate(in, out []byte) int {
 	o.lk.Lock()
 	defer o.lk.Unlock()
 	// This is a simplified deobfuscation process. A real implementation
@@ -143,20 +160,18 @@ func (o *DnsObfuscate) Deobfuscate(in, out []byte) int {
 	if len(in) < offset+firstLabelLen {
 		return 0
 	}
-	payloadWithNonceAndTagAndPadding := in[offset : offset+firstLabelLen]
+	payloadWithLenNonceAndTagAndPadding := in[offset : offset+firstLabelLen]
 
-	// 2. Separate payload, nonce, tag, and padding
-	if len(payloadWithNonceAndTagAndPadding) < dnsNonceLen+dnsTagLen {
+	// 2. Read the embedded length to know the exact size of the payload.
+	if len(payloadWithLenNonceAndTagAndPadding) < dnsPayloadLenBytes+dnsNonceLen+dnsTagLen {
 		return 0
 	}
 	
-	// A simple heuristic to find the end of the encrypted payload is to search for a null byte or
-	// some other marker. For this example, we'll assume there is no padding at the end of the payload.
-	// We'll just take the whole "label" as the encrypted content + nonce + tag.
-	// In a real implementation, you'd need a more robust way to signal length.
+	encryptedPayloadLen := binary.BigEndian.Uint16(payloadWithLenNonceAndTagAndPadding[:dnsPayloadLenBytes])
 	
-	nonce := payloadWithNonceAndTagAndPadding[:dnsNonceLen]
-	encryptedPayloadWithTag := payloadWithNonceAndTagAndPadding[dnsNonceLen:]
+	// Extract the nonce and the encrypted payload with its tag.
+	nonce := payloadWithLenNonceAndTagAndPadding[dnsPayloadLenBytes : dnsPayloadLenBytes+dnsNonceLen]
+	encryptedPayloadWithTag := payloadWithLenNonceAndTagAndPadding[dnsPayloadLenBytes+dnsNonceLen : dnsPayloadLenBytes+dnsNonceLen+encryptedPayloadLen]
 	
 	// 3. Decrypt the payload
 	aesKey := o.dnsDeriveAESKey()
