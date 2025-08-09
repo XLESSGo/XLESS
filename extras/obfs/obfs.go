@@ -30,10 +30,13 @@ func NewObfuscatorFromConfig(cfg ObfuscatorConfig) (Obfuscator, error) {
 		return nil, nil // Return nil Obfuscator, indicating no obfuscation
 	case "salamander":
 		return NewSalamanderObfuscator([]byte(cfg.Password))
+	case "ssh":
+		return NewSshObfuscator([]byte(cfg.Password))
+	case "dtls":
+		return NewDtlsObfuscator([]byte(cfg.Password))
+	case "dns":
+		return NewDnsObfuscator([]byte(cfg.Password))
 	default:
 		return nil, fmt.Errorf("unknown obfuscator type: %s", cfg.Type)
 	}
 }
-
-
-
