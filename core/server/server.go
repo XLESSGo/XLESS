@@ -523,38 +523,45 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) { // 使用 
 	}
 }
 
-func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error { // 使用 protocol (internal)
+// SendMessage 负责将 UDP 消息封装并发送。
+// 它现在会根据连接类型，选择性地调用 SendDatagram 或 SendDatagramWithAddr。
+func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 	if io.TrafficLogger != nil {
 		ok := io.TrafficLogger.LogTraffic(io.AuthID, 0, uint64(len(msg.Data)))
 		if !ok {
-			// TrafficLogger 请求断开客户端
 			_ = io.Conn.CloseWithError(closeErrCodeTrafficLimitReached, "")
 			return errDisconnect
 		}
 	}
-
+	
 	// 在加密封装前最后一刻修改协议字段 (服务器端发送 UDP)
-	var finalMsg *protocol.UDPMessage = msg // 使用 protocol (internal)
+	var finalMsg *protocol.UDPMessage = msg
 	if io.Protocol != nil {
-		ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
-			Type:     "udp_message",
-			IsClient: false, // 服务器端
-			PeerAddr: io.Conn.RemoteAddr(),
+		ctx := protocol_ext.ProtocolContext{
+			Type:      "udp_message",
+			IsClient:  false,
+			PeerAddr:  io.Conn.RemoteAddr(),
 			SessionID: msg.SessionID,
 		}
 		modifiedUDPMsgData, pErr := io.Protocol.Obfuscate(msg, ctx)
 		if pErr != nil {
 			return fmt.Errorf("protocol obfuscation failed: %w", pErr)
 		}
-		finalMsg = modifiedUDPMsgData.(*protocol.UDPMessage) // 类型断言回 *protocol.UDPMessage (internal)
+		finalMsg = modifiedUDPMsgData.(*protocol.UDPMessage)
 	}
 
-	msgN := finalMsg.Serialize(buf) // 使用可能修改过的 finalMsg
-	if msgN < 0 {
-		// 消息大于缓冲区，静默丢弃
-		return nil
+	// 使用类型断言来处理 FakeTCP 适配器
+	if adapter, ok := io.Conn.(*quicAdapter); ok {
+		// 如果是 FakeTCP 连接，我们调用新的 SendDatagramWithAddr 方法
+		return adapter.SendDatagramWithAddr(finalMsg.Data, msg.Addr)
+	} else {
+		// 否则，使用标准的 QUIC 连接方法
+		msgN := finalMsg.Serialize(buf)
+		if msgN < 0 {
+			return nil
+		}
+		return io.Conn.SendDatagram(buf[:msgN])
 	}
-	return io.Conn.SendDatagram(buf[:msgN])
 }
 
 func (io *udpIOImpl) Hook(data []byte, reqAddr *string) error {
