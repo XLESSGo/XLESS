@@ -1,3 +1,5 @@
+github.com/FakeTCP/FakeTCP v0.0.1 h1:d/A3NMEdfdJdTtpSqhamvm+x+zkR8I/wQ63YNr2sugs=
+github.com/FakeTCP/FakeTCP v0.0.1/go.mod h1:IeNJpYbQ+fzYtX9a0X8hM5Xd7teGQROxmxmGcMEa0jg=
 github.com/XLESSGo/uquic v0.0.2 h1:CKFWXQIEno2cD6c9/dgLoQ16FReDLZkfn1MybZOMLlg=
 github.com/XLESSGo/uquic v0.0.2/go.mod h1:WeCSaUe/qvvPHhofkcyl2bifZ5J1QNRuCAIp/WJq+c8=
 github.com/andybalholm/brotli v1.1.1 h1:PR2pgnyFznKEugtsUo0xLdDop5SKXd5Qf5ysW+7XdTA=
