@@ -30,7 +30,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/FakeTCP/FakeTCP v0.0.1 // indirect
+	github.com/FakeTCP/FakeTCP v0.0.3 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
