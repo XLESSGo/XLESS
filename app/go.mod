@@ -19,7 +19,7 @@ require (
 	github.com/libdns/namedotcom v0.3.3
 	github.com/libdns/vultr v1.0.0
 	github.com/mdp/qrterminal/v3 v3.1.1
-	github.com/mholt/acmez/v3 v3.1.1
+	github.com/mholt/acmez/v3 v3.1.2
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.15.0
