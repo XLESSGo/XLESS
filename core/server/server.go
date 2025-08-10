@@ -40,16 +40,23 @@ type Server interface {
 	Close() error
 }
 
-// XListener defines an interface that both quic.Listener and our FakeTCP listener must implement.
 type XListener interface {
 	Accept(ctx context.Context) (net.Conn, error)
 	Addr() net.Addr
 	Close() error
 }
 
+type quicListenerWrapper struct {
+	*quic.Listener
+}
+
+func (l *quicListenerWrapper) Accept(ctx context.Context) (net.Conn, error) {
+	return l.Listener.Accept(ctx)
+}
+
 type serverImpl struct {
 	config   *Config
-	listener XListener // Changed type to our new interface
+	listener XListener
 	protocol protocol_ext.Protocol
 }
 
@@ -57,15 +64,13 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	
-	var listener XListener // Declare listener with the new interface type
+
+	var listener XListener
 	var err error
 
-	// If FakeTCP is enabled, create our custom listener
 	if config.XLESSUseFakeTCP {
 		listener, err = faketcp.XListenFakeTCP(config.Conn.LocalAddr().String())
 	} else {
-		// Otherwise, use the existing QUIC listener logic
 		tlsConfig := &utls.Config{
 			Certificates:   config.TLSConfig.Certificates,
 			GetCertificate: config.TLSConfig.GetCertificate,
@@ -81,16 +86,17 @@ func NewServer(config *Config) (Server, error) {
 			EnableDatagrams:                true,
 			DisablePathManager:             true,
 		}
-		// The original quic.Listener implements our XListener interface
-		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
+		quicLis, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
+		if err == nil {
+			listener = &quicListenerWrapper{Listener: quicLis}
+		}
 	}
 
 	if err != nil {
 		_ = config.Conn.Close()
 		return nil, err
 	}
-	
-	// 实例化 Protocol 插件
+
 	var p protocol_ext.Protocol
 	if config.Protocol != "" && config.Protocol != "plain" && config.Protocol != "origin" {
 		var err error
@@ -99,7 +105,7 @@ func NewServer(config *Config) (Server, error) {
 			return nil, fmt.Errorf("failed to load protocol plugin %q: %w", config.Protocol, err)
 		}
 	}
-	
+
 	return &serverImpl{
 		config:   config,
 		listener: listener,
@@ -123,9 +129,22 @@ func (s *serverImpl) Close() error {
 	return err
 }
 
-func (s *serverImpl) handleClient(conn quic.Connection) {
+func (s *serverImpl) handleClient(conn net.Conn) {
+	switch c := conn.(type) {
+	case quic.Connection:
+		s.handleQUICClient(c)
+	case *faketcp.XStreamConn:
+		adapter := newQuicAdapter(c)
+		s.handleQUICClient(adapter)
+	default:
+		log.Printf("Received an unknown connection type from %s", conn.RemoteAddr())
+		conn.Close()
+	}
+}
+
+func (s *serverImpl) handleQUICClient(conn quic.Connection) {
 	handler := newH3sHandler(s.config, conn)
-	handler.protocol = s.protocol // 将协议插件传递给 h3sHandler
+	handler.protocol = s.protocol
 	h3s := http3.Server{
 		Handler:        handler,
 		StreamHijacker: handler.ProxyStreamHijacker,
@@ -140,6 +159,41 @@ func (s *serverImpl) handleClient(conn quic.Connection) {
 		}
 	}
 	_ = conn.CloseWithError(closeErrCodeOK, "")
+}
+
+// quicAdapter实现了quic.Connection接口，将FakeTCP流适配为QUIC数据报。
+type quicAdapter struct {
+	*faketcp.XStreamConn
+}
+
+func newQuicAdapter(conn *faketcp.XStreamConn) *quicAdapter {
+	return &quicAdapter{XStreamConn: conn}
+}
+
+// ReceiveDatagram 负责从 FakeTCP 流中读取并还原 UDP 数据报。
+func (a *quicAdapter) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	// 实现从 FakeTCP 流中读取和还原 UDP 数据报的逻辑。
+	msg, err := a.XStreamConn.ReadUDPFromStream()
+	if err != nil {
+		return nil, err
+	}
+	return msg.Payload, nil
+}
+
+// SendDatagramWithAddr 是一个自定义方法，用于在知道地址的情况下发送数据报。
+func (a *quicAdapter) SendDatagramWithAddr(payload []byte, addr net.Addr) error {
+	return a.XStreamConn.WriteUDPToStream(&faketcp.XUDPMessage{
+		Addr:    addr,
+		Payload: payload,
+	})
+}
+
+// SendDatagram 负责将 UDP 数据报封装并写入 FakeTCP 流。
+// 由于 SendDatagramWithAddr 已经处理了发送逻辑，这个方法可以保持简洁。
+func (a *quicAdapter) SendDatagram(b []byte) error {
+	// 在 FakeTCP 适配器中，通常不直接调用此方法，因为没有地址信息。
+	// 上层逻辑会调用 SendDatagramWithAddr。
+	return fmt.Errorf("address required for FakeTCP datagram, use SendDatagramWithAddr")
 }
 
 type h3sHandler struct {
