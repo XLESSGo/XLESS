@@ -52,8 +52,8 @@ github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f h1:uVh0qpEslrWjg
 github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f/go.mod h1:xkkq9D4ygcldQQhKS/w9CadiCKwCngU7K9E3DaKahpM=
 github.com/bluele/gcache v0.0.2 h1:WcbfdXICg7G/DGBh1PFfcirkWOQV+v077yF1pSy3DGw=
 github.com/bluele/gcache v0.0.2/go.mod h1:m15KV+ECjptwSPxKhOhQoAFQVtUFjTVkc3H8o0t/fp0=
-github.com/caddyserver/certmagic v0.22.1 h1:FTI1H+N7UrVWx1mVW7Am0JrOtTNgJO/uOsIhjtDZM60=
-github.com/caddyserver/certmagic v0.22.1/go.mod h1:hbqE7BnkjhX5IJiFslPmrSeobSeZvI6ux8tyxhsd6qs=
+github.com/caddyserver/certmagic v0.24.0 h1:EfXTWpxHAUKgDfOj6MHImJN8Jm4AMFfMT6ITuKhrDF0=
+github.com/caddyserver/certmagic v0.24.0/go.mod h1:xPT7dC1DuHHnS2yuEQCEyks+b89sUkMENh8dJF+InLE=
 github.com/caddyserver/zerossl v0.1.3 h1:onS+pxp3M8HnHpN5MMbOMyNjmTheJyWRaZYwn+YTAyA=
 github.com/caddyserver/zerossl v0.1.3/go.mod h1:CxA0acn7oEGO6//4rtrRjYgEoa4MFw/XofZnrYwGqG4=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
@@ -195,8 +195,8 @@ github.com/libdns/gandi v1.0.3/go.mod h1:G6dw58Xnji2xX+lb+uZxGbtmfxKllm1CGHE2bOP
 github.com/libdns/godaddy v1.0.3 h1:PX1FOYDQ1HGQzz8mVOmtwm3aa6Sv5MwCkNzivUUTA44=
 github.com/libdns/godaddy v1.0.3/go.mod h1:vuKWUXnvblDvcaiRwutOoLl7DuB21x8tI06owsF/JTM=
 github.com/libdns/libdns v0.2.0/go.mod h1:yQCXzk1lEZmmCPa857bnk4TsOiqYasqpyOEeSObbb40=
-github.com/libdns/libdns v0.2.3 h1:ba30K4ObwMGB/QTmqUxf3H4/GmUrCAIkMWejeGl12v8=
-github.com/libdns/libdns v0.2.3/go.mod h1:4Bj9+5CQiNMVGf87wjX4CY3HQJypUHRuLvlsfsZqLWQ=
+github.com/libdns/libdns v1.0.0 h1:IvYaz07JNz6jUQ4h/fv2R4sVnRnm77J/aOuC9B+TQTA=
+github.com/libdns/libdns v1.0.0/go.mod h1:4Bj9+5CQiNMVGf87wjX4CY3HQJypUHRuLvlsfsZqLWQ=
 github.com/libdns/namedotcom v0.3.3 h1:R10C7+IqQGVeC4opHHMiFNBxdNBg1bi65ZwqLESl+jE=
 github.com/libdns/namedotcom v0.3.3/go.mod h1:GbYzsAF2yRUpI0WgIK5fs5UX+kDVUPaYCFLpTnKQm0s=
 github.com/libdns/vultr v1.0.0 h1:W8B4+k2bm9ro3bZLSZV9hMOQI+uO6Svu+GmD+Olz7ZI=
@@ -211,8 +211,8 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mdp/qrterminal/v3 v3.1.1 h1:cIPwg3QU0OIm9+ce/lRfWXhPwEjOSKwk3HBwL3HBTyc=
 github.com/mdp/qrterminal/v3 v3.1.1/go.mod h1:5lJlXe7Jdr8wlPDdcsJttv1/knsRgzXASyr4dcGZqNU=
-github.com/mholt/acmez/v3 v3.1.1 h1:Jh+9uKHkPxUJdxM16q5mOr+G2V0aqkuFtNA28ihCxhQ=
-github.com/mholt/acmez/v3 v3.1.1/go.mod h1:L1wOU06KKvq7tswuMDwKdcHeKpFFgkppZy/y0DFxagQ=
+github.com/mholt/acmez/v3 v3.1.2 h1:auob8J/0FhmdClQicvJvuDavgd5ezwLBfKuYmynhYzc=
+github.com/mholt/acmez/v3 v3.1.2/go.mod h1:L1wOU06KKvq7tswuMDwKdcHeKpFFgkppZy/y0DFxagQ=
 github.com/miekg/dns v1.1.40/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/miekg/dns v1.1.51/go.mod h1:2Z9d3CP1LQWihRZUf29mQ19yDThaI4DAYzte2CaQW5c=
 github.com/miekg/dns v1.1.64 h1:wuZgD9wwCE6XMT05UU/mlSko71eRSXEAm2EbjQXLKnQ=
