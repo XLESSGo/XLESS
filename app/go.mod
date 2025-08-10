@@ -13,7 +13,7 @@ require (
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/caddyserver/certmagic v0.22.1
 	github.com/libdns/cloudflare v0.1.1
-	github.com/libdns/duckdns v0.2.0
+	github.com/libdns/duckdns v0.3.0
 	github.com/libdns/gandi v1.0.3
 	github.com/libdns/godaddy v1.0.3
 	github.com/libdns/namedotcom v0.3.3
@@ -51,7 +51,7 @@ require (
 	github.com/infobloxopen/go-trees v0.0.0-20221216143356-66ceba885ebc // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
-	github.com/libdns/libdns v0.2.3 // indirect
+	github.com/libdns/libdns v1.0.0-beta.1 // indirect
 	github.com/m13253/dns-over-https/v2 v2.3.10 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/miekg/dns v1.1.64 // indirect
