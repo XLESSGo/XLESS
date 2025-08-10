@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"math/rand"
+    "net"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/XLESSGo/uquic"
 	"github.com/XLESSGo/uquic/http3"
+	"github.com/FakeTCP/FakeTCP"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
 	protocol "github.com/XLESSGo/XLESS/core/internal/protocol" // 导入 core/internal/protocol 为 protocol
