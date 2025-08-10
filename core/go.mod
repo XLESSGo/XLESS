@@ -3,7 +3,7 @@ module github.com/XLESSGo/XLESS/core
 go 1.24.5
 
 require (
-	github.com/FakeTCP/FakeTCP v0.0.1
+	github.com/FakeTCP/FakeTCP v0.0.3
 	github.com/XLESSGo/uquic v0.0.2
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/stretchr/testify v1.10.0
