@@ -42,23 +42,39 @@ func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-	tlsConfig := &utls.Config{
-		Certificates:    config.TLSConfig.Certificates,
-		GetCertificate: config.TLSConfig.GetCertificate,
+
+	var listener net.PacketConn
+	var err error
+
+	if config.XLESSUseFakeTCP {
+		// Use the FakeTCP listener if the flag is set
+		listener, err = faketcp.XListenFakeTCP(config.Conn.LocalAddr().String())
+	} else {
+		// Use the existing QUIC listener logic
+		tlsConfig := &utls.Config{
+			Certificates:   config.TLSConfig.Certificates,
+			GetCertificate: config.TLSConfig.GetCertificate,
+		}
+		quicConfig := &quic.Config{
+			InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
+			MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
+			InitialConnectionReceiveWindow: config.QUICConfig.InitialConnectionReceiveWindow,
+			MaxConnectionReceiveWindow:     config.QUICConfig.MaxConnectionReceiveWindow,
+			MaxIdleTimeout:                 config.QUICConfig.MaxIdleTimeout,
+			MaxIncomingStreams:             config.QUICConfig.MaxIncomingStreams,
+			DisablePathMTUDiscovery:        config.QUICConfig.DisablePathMTUDiscovery,
+			EnableDatagrams:                true,
+			DisablePathManager:             true,
+		}
+		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
 	}
-	quicConfig := &quic.Config{
-		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
-		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
-		InitialConnectionReceiveWindow: config.QUICConfig.InitialConnectionReceiveWindow,
-		MaxConnectionReceiveWindow:     config.QUICConfig.MaxConnectionReceiveWindow,
-		MaxIdleTimeout:                 config.QUICConfig.MaxIdleTimeout,
-		MaxIncomingStreams:             config.QUICConfig.MaxIncomingStreams,
-		DisablePathMTUDiscovery:        config.QUICConfig.DisablePathMTUDiscovery,
-		EnableDatagrams:                true,
-		DisablePathManager:             true,
+
+	if err != nil {
+		_ = config.Conn.Close()
+		return nil, err
 	}
-	
-	// 实例化 Protocol 插件
+
+	// 实例化 Protocol 插件 (This part remains unchanged)
 	var p protocol_ext.Protocol
 	if config.Protocol != "" && config.Protocol != "plain" && config.Protocol != "origin" {
 		var err error
@@ -68,12 +84,6 @@ func NewServer(config *Config) (Server, error) {
 		}
 	}
 	
-	listener, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
-	
-	if err != nil {
-		_ = config.Conn.Close()
-		return nil, err
-	}
 	return &serverImpl{
 		config:   config,
 		listener: listener,
@@ -83,8 +93,8 @@ func NewServer(config *Config) (Server, error) {
 
 type serverImpl struct {
 	config   *Config
-	listener *quic.Listener
-	protocol protocol_ext.Protocol // 存储协议插件实例
+	listener net.PacketConn // Changed from *quic.Listener to net.PacketConn interface
+	protocol protocol_ext.Protocol
 }
 
 func (s *serverImpl) Serve() error {
