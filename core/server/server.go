@@ -40,19 +40,32 @@ type Server interface {
 	Close() error
 }
 
+// XListener defines an interface that both quic.Listener and our FakeTCP listener must implement.
+type XListener interface {
+	Accept(ctx context.Context) (net.Conn, error)
+	Addr() net.Addr
+	Close() error
+}
+
+type serverImpl struct {
+	config   *Config
+	listener XListener // Changed type to our new interface
+	protocol protocol_ext.Protocol
+}
+
 func NewServer(config *Config) (Server, error) {
 	if err := config.fill(); err != nil {
 		return nil, err
 	}
-
-	var listener net.PacketConn
+	
+	var listener XListener // Declare listener with the new interface type
 	var err error
 
+	// If FakeTCP is enabled, create our custom listener
 	if config.XLESSUseFakeTCP {
-		// Use the FakeTCP listener if the flag is set
 		listener, err = faketcp.XListenFakeTCP(config.Conn.LocalAddr().String())
 	} else {
-		// Use the existing QUIC listener logic
+		// Otherwise, use the existing QUIC listener logic
 		tlsConfig := &utls.Config{
 			Certificates:   config.TLSConfig.Certificates,
 			GetCertificate: config.TLSConfig.GetCertificate,
@@ -68,6 +81,7 @@ func NewServer(config *Config) (Server, error) {
 			EnableDatagrams:                true,
 			DisablePathManager:             true,
 		}
+		// The original quic.Listener implements our XListener interface
 		listener, err = quic.Listen(config.Conn, tlsConfig, quicConfig)
 	}
 
@@ -75,8 +89,8 @@ func NewServer(config *Config) (Server, error) {
 		_ = config.Conn.Close()
 		return nil, err
 	}
-
-	// 实例化 Protocol 插件 (This part remains unchanged)
+	
+	// 实例化 Protocol 插件
 	var p protocol_ext.Protocol
 	if config.Protocol != "" && config.Protocol != "plain" && config.Protocol != "origin" {
 		var err error
@@ -89,14 +103,8 @@ func NewServer(config *Config) (Server, error) {
 	return &serverImpl{
 		config:   config,
 		listener: listener,
-		protocol: p, // 传递协议插件
+		protocol: p,
 	}, nil
-}
-
-type serverImpl struct {
-	config   *Config
-	listener net.PacketConn // Changed from *quic.Listener to net.PacketConn interface
-	protocol protocol_ext.Protocol
 }
 
 func (s *serverImpl) Serve() error {
