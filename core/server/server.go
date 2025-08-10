@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
     "net"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,12 +47,57 @@ type XListener interface {
 	Close() error
 }
 
+// quicListenerWrapper wraps a quic.Listener to implement our XListener interface.
 type quicListenerWrapper struct {
 	*quic.Listener
 }
 
+// Accept now correctly returns a net.Conn by wrapping the quic.Connection.
 func (l *quicListenerWrapper) Accept(ctx context.Context) (net.Conn, error) {
-	return l.Listener.Accept(ctx)
+	conn, err := l.Listener.Accept(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return newQuicConnWrapper(conn), nil
+}
+
+// quicConnWrapper wraps quic.Connection and implements net.Conn.
+type quicConnWrapper struct {
+	quic.Connection
+}
+
+func newQuicConnWrapper(conn quic.Connection) *quicConnWrapper {
+	return &quicConnWrapper{Connection: conn}
+}
+
+// Close implements the net.Conn Close method.
+func (c *quicConnWrapper) Close() error {
+	return c.Connection.CloseWithError(closeErrCodeOK, "")
+}
+
+// Read is a placeholder for net.Conn Read.
+func (c *quicConnWrapper) Read(b []byte) (n int, err error) {
+	return 0, fmt.Errorf("read not implemented for quicConnWrapper")
+}
+
+// Write is a placeholder for net.Conn Write.
+func (c *quicConnWrapper) Write(b []byte) (n int, err error) {
+	return 0, fmt.Errorf("write not implemented for quicConnWrapper")
+}
+
+// SetDeadline is a placeholder for net.Conn SetDeadline.
+func (c *quicConnWrapper) SetDeadline(t time.Time) error {
+	return nil
+}
+
+// SetReadDeadline is a placeholder for net.Conn SetReadDeadline.
+func (c *quicConnWrapper) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+// SetWriteDeadline is a placeholder for net.Conn SetWriteDeadline.
+func (c *quicConnWrapper) SetWriteDeadline(t time.Time) error {
+	return nil
 }
 
 type serverImpl struct {
@@ -121,6 +167,113 @@ func (s *serverImpl) Serve() error {
 		}
 		go s.handleClient(conn)
 	}
+}
+
+func (s *serverImpl) Close() error {
+	err := s.listener.Close()
+	_ = s.config.Conn.Close()
+	return err
+}
+
+func (s *serverImpl) handleClient(conn net.Conn) {
+	switch c := conn.(type) {
+	case *quicConnWrapper:
+		s.handleQUICClient(c.Connection)
+	case *faketcp.XStreamConn:
+		adapter := newQuicAdapter(c)
+		s.handleQUICClient(adapter)
+	default:
+		log.Printf("Received an unknown connection type from %s", conn.RemoteAddr())
+		conn.Close()
+	}
+}
+
+func (s *serverImpl) handleQUICClient(conn quic.Connection) {
+	handler := newH3sHandler(s.config, conn)
+	handler.protocol = s.protocol
+	h3s := http3.Server{
+		Handler:        handler,
+		StreamHijacker: handler.ProxyStreamHijacker,
+	}
+	err := h3s.ServeQUICConn(conn)
+	if handler.authenticated {
+		if tl := s.config.TrafficLogger; tl != nil {
+			tl.LogOnlineState(handler.authID, false)
+		}
+		if el := s.config.EventLogger; el != nil {
+			el.Disconnect(conn.RemoteAddr(), handler.authID, err)
+		}
+	}
+	_ = conn.CloseWithError(closeErrCodeOK, "")
+}
+
+// --- 以下为适配 FakeTCP 的新类型和方法 ---
+
+// quicAdapter实现了quic.Connection接口，将FakeTCP流适配为QUIC数据报。
+type quicAdapter struct {
+	*faketcp.XStreamConn
+}
+
+func newQuicAdapter(conn *faketcp.XStreamConn) *quicAdapter {
+	return &quicAdapter{XStreamConn: conn}
+}
+
+// ReceiveDatagram 负责从 FakeTCP 流中读取并还原 UDP 数据报。
+func (a *quicAdapter) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	msg, err := a.XStreamConn.ReadUDPFromStream()
+	if err != nil {
+		return nil, err
+	}
+	return msg.Payload, nil
+}
+
+// SendDatagramWithAddr 是一个自定义方法，用于在知道地址的情况下发送数据报。
+func (a *quicAdapter) SendDatagramWithAddr(payload []byte, addr net.Addr) error {
+	return a.XStreamConn.WriteUDPToStream(&faketcp.XUDPMessage{
+		Addr:    addr,
+		Payload: payload,
+	})
+}
+
+// SendDatagram 负责将 UDP 数据报封装并写入 FakeTCP 流。
+func (a *quicAdapter) SendDatagram(b []byte) error {
+	return fmt.Errorf("address required for FakeTCP datagram, use SendDatagramWithAddr")
+}
+
+func (a *quicAdapter) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
+	return a.OpenStream()
+}
+
+func (a *quicAdapter) OpenStream() (quic.Stream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) AcceptStream(ctx context.Context) (quic.Stream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) OpenUniStream() (quic.SendStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) HandshakeComplete() context.Context {
+	return context.Background()
+}
+
+func (a *quicAdapter) ConnectionState() quic.ConnectionState {
+	return quic.ConnectionState{}
+}
+
+func (a *quicAdapter) CloseWithError(code quic.ApplicationErrorCode, desc string) error {
+	return a.XStreamConn.Close()
 }
 
 func (s *serverImpl) Close() error {
@@ -524,7 +677,6 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) { // 使用 
 }
 
 // SendMessage 负责将 UDP 消息封装并发送。
-// 它现在会根据连接类型，选择性地调用 SendDatagram 或 SendDatagramWithAddr。
 func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 	if io.TrafficLogger != nil {
 		ok := io.TrafficLogger.LogTraffic(io.AuthID, 0, uint64(len(msg.Data)))
@@ -552,10 +704,13 @@ func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 
 	// 使用类型断言来处理 FakeTCP 适配器
 	if adapter, ok := io.Conn.(*quicAdapter); ok {
-		// 如果是 FakeTCP 连接，我们调用新的 SendDatagramWithAddr 方法
-		return adapter.SendDatagramWithAddr(finalMsg.Data, msg.Addr)
+		// 转换地址类型
+		addr, err := net.ResolveUDPAddr("udp", msg.Addr)
+		if err != nil {
+			return fmt.Errorf("failed to resolve UDP address: %w", err)
+		}
+		return adapter.SendDatagramWithAddr(finalMsg.Data, addr)
 	} else {
-		// 否则，使用标准的 QUIC 连接方法
 		msgN := finalMsg.Serialize(buf)
 		if msgN < 0 {
 			return nil
