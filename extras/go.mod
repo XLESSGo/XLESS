@@ -1,8 +1,6 @@
 module github.com/XLESSGo/XLESS/extras
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.24.5
 
 require (
 	github.com/XLESSGo/XLESS/core v0.0.0-20250724143135-0a316cc69029
@@ -20,6 +18,7 @@ require (
 )
 
 require (
+	github.com/FakeTCP/FakeTCP v0.0.3 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/database64128/netx-go v0.1.0 // indirect

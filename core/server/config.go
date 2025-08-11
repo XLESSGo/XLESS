@@ -48,6 +48,9 @@ type Config struct {
 	ProtocolParam string
 	EnableUQUIC           bool
 	UQUICSpecID           quic.QUICID // 类型必须是 quic.QUICID
+
+	// Add this new field to enable FakeTCP
+	XLESSUseFakeTCP bool `json:"xless_use_faketcp,omitempty"`
 }
 
 func (c *Config) fill() error {

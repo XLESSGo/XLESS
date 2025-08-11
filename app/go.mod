@@ -1,8 +1,6 @@
 module github.com/XLESSGo/XLESS/app
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.24.5
 
 require (
 	github.com/XLESSGo/XLESS/core v0.0.0
@@ -32,6 +30,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/FakeTCP/FakeTCP v0.0.3 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/caddyserver/zerossl v0.1.3 // indirect
