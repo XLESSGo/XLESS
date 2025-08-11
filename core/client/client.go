@@ -211,7 +211,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", contentType)
 
-	time.Sleep(time.Duration(500+utils.RandIntn(1200)) * time.Millisecond)
+	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
 
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
@@ -646,10 +646,10 @@ func (a *quicAdapter) SetCongestionControl(cc uquic_congestion.CongestionControl
 	// FakeTCP has no built-in congestion control; this is a no-op.
 }
 
-func (a *quicAdapter) OpenEarlyStream() (quic.EarlyStream, error) {
+func (a *quicAdapter) OpenEarlyStream() (quic.Stream, error) {
 	return nil, fmt.Errorf("OpenEarlyStream not implemented for FakeTCP adapter")
 }
-func (a *quicAdapter) OpenEarlyStreamSync(ctx context.Context) (quic.EarlyStream, error) {
+func (a *quicAdapter) OpenEarlyStreamSync(ctx context.Context) (quic.Stream, error) {
 	return nil, fmt.Errorf("OpenEarlyStreamSync not implemented for FakeTCP adapter")
 }
 func (a *quicAdapter) OpenEarlyUniStream() (quic.SendStream, error) {
