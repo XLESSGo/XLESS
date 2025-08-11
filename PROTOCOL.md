@@ -1,6 +1,6 @@
 # XLESS Protocol Specification
 
-XLESS is a TCP and UDP proxy protocol built on QUIC, designed to provide speed, security, and censorship resistance. This document describes the protocol used by XLESS starting from version 1.0.1. From now on, we will refer to it as "the protocol" or "the XLESS protocol."
+XLESS is a TCP and UDP proxy protocol built on QUIC, designed to provide speed, security, and censorship resistance. This document describes the protocol used by XLESS starting from version 1.0.2. From now on, we will refer to it as "the protocol" or "the XLESS protocol."
 
 ## Language Requirements
 
@@ -54,9 +54,18 @@ After completing the simulated Browse described above, or if no link paths were 
 
 ### Refined Authentication Request Timing and Sequence:
 
-  * Between the completion of simulated Browse and sending the authentication request, the client **MUST** introduce longer, randomly distributed delays to simulate user thinking, clicking, or data entry time after Browse a page.
-  * The authentication request **SHOULD NOT** be sent immediately after simulated Browse ends. The client **MAY** randomly insert 1-3 seemingly normal auxiliary requests to the decoy service before or after the authentication request (e.g., requesting an icon, an infrequently loaded JS file, or an API path known to return 404). Responses to these requests **SHOULD** be processed normally by the client.
-  * The client **MUST** fully utilize HTTP/3's long connection feature, ensuring that the authentication request occurs over the connection established during previous simulated Browse, avoiding the creation of new connections.
+  \* Between the completion of simulated Browse and sending the authentication request, the client **MUST** introduce longer, randomly distributed delays to simulate user thinking, clicking, or data entry time after Browse a page.
+  \* The authentication request **SHOULD NOT** be sent immediately after simulated Browse ends. The client **MAY** randomly insert 1-3 seemingly normal auxiliary requests to the decoy service before or after the authentication request (e.g., requesting an icon, an infrequently loaded JS file, or an API path known to return 404). Responses to these requests **SHOULD** be processed normally by the client.
+  \* The client **MUST** fully utilize HTTP/3's long connection feature, ensuring that the authentication request occurs over the connection established during previous simulated Browse, avoiding the creation of new connections.
+
+**Configurable Websim GET Requests:**
+
+The number of auxiliary requests made during the simulated browse phase is now configurable.
+
+  \* The client **MAY** configure a specific number of resources to be requested.
+  \* If a custom number is configured, the client **MUST** attempt to request that many resources.
+  \* However, if the `index.html` page contains fewer than four (4) available link paths, the client **MUST** ignore the configured count and fall back to the default mechanism (requesting 2 to 4 resources) to maintain a plausible Browse footprint.
+  \* If the configuration is not specified, the client **MUST** use the default behavior of randomly requesting 2 to 4 of the available link paths.
 
 The XLESS server **MUST** identify this obfuscated authentication request and use the encapsulated information to authenticate the client.
 
