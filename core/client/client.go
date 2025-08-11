@@ -189,7 +189,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
 	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
-	sendAuxiliaryRequests(httpClient, resources)
+	sendAuxiliaryRequests(httpClient, resources, c.config.WebsimCount) // <-- 修改这一行
 
 	// 统一的认证请求发送逻辑
 	apiPath, query := randomAPIPathAndQuery()
