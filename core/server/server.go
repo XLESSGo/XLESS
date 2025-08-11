@@ -313,9 +313,8 @@ func (a *quicAdapter) LocalAddr() net.Addr {
 }
 
 // SetCongestionControl is a required method for the quic.Connection interface.
-func (a *quicAdapter) SetCongestionControl(cc uquic_congestion.CongestionControl) error {
+func (a *quicAdapter) SetCongestionControl(cc uquic_congestion.CongestionControl) {
 	// FakeTCP has no built-in congestion control; this is a no-op.
-	return nil
 }
 
 // h3sHandler handles HTTP/3 requests.
