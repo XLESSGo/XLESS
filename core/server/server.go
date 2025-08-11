@@ -276,77 +276,9 @@ func (a *quicAdapter) CloseWithError(code quic.ApplicationErrorCode, desc string
 	return a.XStreamConn.Close()
 }
 
-func (s *serverImpl) Close() error {
-	err := s.listener.Close()
-	_ = s.config.Conn.Close()
-	return err
-}
-
-func (s *serverImpl) handleClient(conn net.Conn) {
-	switch c := conn.(type) {
-	case quic.Connection:
-		s.handleQUICClient(c)
-	case *faketcp.XStreamConn:
-		adapter := newQuicAdapter(c)
-		s.handleQUICClient(adapter)
-	default:
-		log.Printf("Received an unknown connection type from %s", conn.RemoteAddr())
-		conn.Close()
-	}
-}
-
-func (s *serverImpl) handleQUICClient(conn quic.Connection) {
-	handler := newH3sHandler(s.config, conn)
-	handler.protocol = s.protocol
-	h3s := http3.Server{
-		Handler:        handler,
-		StreamHijacker: handler.ProxyStreamHijacker,
-	}
-	err := h3s.ServeQUICConn(conn)
-	if handler.authenticated {
-		if tl := s.config.TrafficLogger; tl != nil {
-			tl.LogOnlineState(handler.authID, false)
-		}
-		if el := s.config.EventLogger; el != nil {
-			el.Disconnect(conn.RemoteAddr(), handler.authID, err)
-		}
-	}
-	_ = conn.CloseWithError(closeErrCodeOK, "")
-}
-
-// quicAdapter实现了quic.Connection接口，将FakeTCP流适配为QUIC数据报。
-type quicAdapter struct {
-	*faketcp.XStreamConn
-}
-
-func newQuicAdapter(conn *faketcp.XStreamConn) *quicAdapter {
-	return &quicAdapter{XStreamConn: conn}
-}
-
-// ReceiveDatagram 负责从 FakeTCP 流中读取并还原 UDP 数据报。
-func (a *quicAdapter) ReceiveDatagram(ctx context.Context) ([]byte, error) {
-	// 实现从 FakeTCP 流中读取和还原 UDP 数据报的逻辑。
-	msg, err := a.XStreamConn.ReadUDPFromStream()
-	if err != nil {
-		return nil, err
-	}
-	return msg.Payload, nil
-}
-
-// SendDatagramWithAddr 是一个自定义方法，用于在知道地址的情况下发送数据报。
-func (a *quicAdapter) SendDatagramWithAddr(payload []byte, addr net.Addr) error {
-	return a.XStreamConn.WriteUDPToStream(&faketcp.XUDPMessage{
-		Addr:    addr,
-		Payload: payload,
-	})
-}
-
-// SendDatagram 负责将 UDP 数据报封装并写入 FakeTCP 流。
-// 由于 SendDatagramWithAddr 已经处理了发送逻辑，这个方法可以保持简洁。
-func (a *quicAdapter) SendDatagram(b []byte) error {
-	// 在 FakeTCP 适配器中，通常不直接调用此方法，因为没有地址信息。
-	// 上层逻辑会调用 SendDatagramWithAddr。
-	return fmt.Errorf("address required for FakeTCP datagram, use SendDatagramWithAddr")
+// Context 方法是实现 quic.Connection 接口所必需的
+func (a *quicAdapter) Context() context.Context {
+	return context.Background()
 }
 
 type h3sHandler struct {
