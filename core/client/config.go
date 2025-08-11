@@ -40,6 +40,9 @@ type Config struct {
 	UQUICSpecID     quic.QUICID // 类型必须为 quic.QUICID
 
 	filled bool // whether the fields have been verified and filled
+
+	// Add this new field to enable FakeTCP
+	XLESSUseFakeTCP bool `json:"xless_use_faketcp,omitempty"`
 }
 
 func (c *Config) verifyAndFill() error {
