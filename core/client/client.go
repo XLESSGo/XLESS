@@ -86,31 +86,6 @@ func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	return c, info, nil
 }
 
-package client
-
-import (
-	"context"
-	utls "github.com/refraction-networking/utls"
-	"errors"
-	"fmt"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"net/url"
-	"strings"
-	"time"
-
-	coreErrs "github.com/XLESSGo/XLESS/core/errors"
-	"github.com/XLESSGo/XLESS/core/internal/congestion"
-	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
-	"github.com/XLESSGo/XLESS/core/internal/utils"
-
-	"github.com/XLESSGo/XLESS/faketcp"
-	"github.com/XLESSGo/uquic"
-	"github.com/XLESSGo/uquic/http3"
-)
-
 // connect 负责建立与服务器的连接和握手。
 func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	var conn quic.Connection
