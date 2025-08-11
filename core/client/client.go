@@ -11,21 +11,27 @@ import (
 	"math/rand"
 	"io"
 	"strings"
-	"fmt" // 导入 fmt
+	"fmt"
+	"bytes"
+	"encoding/binary"
+	"sync"
+	"log"
 
 	coreErrs "github.com/XLESSGo/XLESS/core/errors"
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
-	protocol "github.com/XLESSGo/XLESS/core/internal/protocol" // 导入 core/internal/protocol 为 protocol
-	protocol_ext "github.com/XLESSGo/XLESS/core/protocol"      // 导入 core/protocol 为 protocol_ext
+	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
+	protocol_ext "github.com/XLESSGo/XLESS/core/protocol"
 	"github.com/XLESSGo/XLESS/core/internal/utils"
 
 	"github.com/XLESSGo/uquic"
 	"github.com/XLESSGo/uquic/http3"
+	uquic_congestion "github.com/XLESSGo/uquic/congestion"
+	faketcp "github.com/FakeTCP/FakeTCP"
 )
 
 const (
-	closeErrCodeOK            = 0x100 // HTTP3 ErrCodeNoError
-	closeErrCodeProtocolError = 0x101 // HTTP3 ErrCodeGeneralProtocolError
+	closeErrCodeOK            = 0x100
+	closeErrCodeProtocolError = 0x101
 )
 
 type Client interface {
@@ -42,15 +48,24 @@ type HyUDPConn interface {
 
 type HandshakeInfo struct {
 	UDPEnabled bool
-	Tx         uint64 // 0 if using BBR
+	Tx         uint64
 }
 
+// clientImpl 是 Client 接口的具体实现。
+type clientImpl struct {
+	config *Config
+	pktConn net.PacketConn
+	conn    quic.Connection
+	udpSM *udpSessionManager
+	protocol protocol_ext.Protocol
+}
+
+// NewClient 创建并返回一个新的 Client 实例。
 func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	if err := config.verifyAndFill(); err != nil {
 		return nil, nil, err
 	}
 	
-	// 实例化 Protocol 插件
 	var p protocol_ext.Protocol
 	if config.Protocol != "" && config.Protocol != "plain" && config.Protocol != "origin" {
 		var err error
@@ -62,7 +77,7 @@ func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	
 	c := &clientImpl{
 		config: config,
-		protocol: p, // 传递 protocol 插件
+		protocol: p,
 	}
 	info, err := c.connect()
 	if err != nil {
@@ -71,114 +86,123 @@ func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	return c, info, nil
 }
 
-type clientImpl struct {
-	config *Config
-
-	pktConn net.PacketConn
-	conn    quic.Connection
-
-	udpSM *udpSessionManager
-	protocol protocol_ext.Protocol // 存储协议插件实例
-}
-
+// connect 负责建立与服务器的连接和握手。
 func (c *clientImpl) connect() (*HandshakeInfo, error) {
-	pktConn, err := c.config.ConnFactory.New(c.config.ServerAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	tlsConfig := &utls.Config{
-		ServerName:            c.config.TLSConfig.ServerName,
-		InsecureSkipVerify:    c.config.TLSConfig.InsecureSkipVerify,
-		VerifyPeerCertificate: c.config.TLSConfig.VerifyPeerCertificate,
-		RootCAs:               c.config.TLSConfig.RootCAs,
-	}
-
-	quicConfig := &quic.Config{
-		InitialStreamReceiveWindow:     c.config.QUICConfig.InitialStreamReceiveWindow,
-		MaxStreamReceiveWindow:         c.config.QUICConfig.MaxStreamReceiveWindow,
-		InitialConnectionReceiveWindow: c.config.QUICConfig.InitialConnectionReceiveWindow,
-		MaxConnectionReceiveWindow:     c.config.QUICConfig.MaxConnectionReceiveWindow,
-		MaxIdleTimeout:                 c.config.QUICConfig.MaxIdleTimeout,
-		KeepAlivePeriod:                c.config.QUICConfig.KeepAlivePeriod,
-		DisablePathMTUDiscovery:        c.config.QUICConfig.DisablePathMTUDiscovery,
-		EnableDatagrams:                true,
-		DisablePathManager:             true,
-	}
-
-	var conn quic.EarlyConnection
+	var conn quic.Connection
 	var rt http.RoundTripper
 
-	if c.config.EnableUQUIC {
-		quicSpec, err := quic.QUICID2Spec(c.config.UQUICSpecID)
+	// 如果使用 FakeTCP，则使用自定义的连接和 RoundTripper
+	if c.config.XLESSUseFakeTCP {
+		log.Println("Using FakeTCP for connection")
+		tcpConn, err := faketcp.Dial(c.config.ServerAddr.String())
 		if err != nil {
-			_ = pktConn.Close()
 			return nil, coreErrs.ConnectError{Err: err}
 		}
-
-		uquicRT := &http3.RoundTripper{
-			TLSClientConfig: tlsConfig,
-			QUICConfig:      quicConfig,
-			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				udpConn, ok := pktConn.(net.PacketConn)
-				if !ok {
-					return nil, errors.New("pktConn is not a net.PacketConn, cannot use for QUIC Dial")
-				}
-
-				ut := &quic.UTransport{
-					Transport: &quic.Transport{
-						Conn: udpConn,
-					},
-					QUICSpec: &quicSpec,
-				}
-
-				udpAddr, err := net.ResolveUDPAddr(udpConn.LocalAddr().Network(), c.config.ServerAddr.String())
-				if err != nil {
-					return nil, err
-				}
-
-				qc, err := ut.DialEarly(ctx, udpAddr, tlsCfg, cfg)
-				if err != nil {
-					return nil, err
-				}
-				conn = qc
-				return qc, nil
-			},
-		}
-		rt = uquicRT
-	} else {
+		// 将 FakeTCP 连接包装为 quicAdapter
+		conn = newQuicAdapter(tcpConn)
+		c.conn = conn
+		
+		// FakeTCP 模式下，需要使用自定义的 http3.RoundTripper 适配 FakeTCP 连接
 		rt = &http3.RoundTripper{
-			TLSClientConfig: tlsConfig,
-			QUICConfig:      quicConfig,
-			Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				// quic.DialEarly directly accepts net.Addr for remoteAddr.
-				qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
-				if err != nil {
-					return nil, err
-				}
-				conn = qc
-				return qc, nil
+			Dial: func(ctx context.Context, addr string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				return conn.(quic.EarlyConnection), nil
 			},
+			TLSClientConfig: &utls.Config{InsecureSkipVerify: true},
+		}
+
+	} else {
+		// 否则，使用标准的 QUIC 连接
+		pktConn, err := c.config.ConnFactory.New(c.config.ServerAddr)
+		if err != nil {
+			return nil, err
+		}
+		c.pktConn = pktConn
+
+		tlsConfig := &utls.Config{
+			ServerName:            c.config.TLSConfig.ServerName,
+			InsecureSkipVerify:    c.config.TLSConfig.InsecureSkipVerify,
+			VerifyPeerCertificate: c.config.TLSConfig.VerifyPeerCertificate,
+			RootCAs:               c.config.TLSConfig.RootCAs,
+		}
+
+		quicConfig := &quic.Config{
+			InitialStreamReceiveWindow:     c.config.QUICConfig.InitialStreamReceiveWindow,
+			MaxStreamReceiveWindow:         c.config.QUICConfig.MaxStreamReceiveWindow,
+			InitialConnectionReceiveWindow: c.config.QUICConfig.InitialConnectionReceiveWindow,
+			MaxConnectionReceiveWindow:     c.config.QUICConfig.MaxConnectionReceiveWindow,
+			MaxIdleTimeout:                 c.config.QUICConfig.MaxIdleTimeout,
+			KeepAlivePeriod:                c.config.QUICConfig.KeepAlivePeriod,
+			DisablePathMTUDiscovery:        c.config.QUICConfig.DisablePathMTUDiscovery,
+			EnableDatagrams:                true,
+			DisablePathManager:             true,
+		}
+
+		if c.config.EnableUQUIC {
+			quicSpec, err := quic.QUICID2Spec(c.config.UQUICSpecID)
+			if err != nil {
+				_ = pktConn.Close()
+				return nil, coreErrs.ConnectError{Err: err}
+			}
+			rt = &http3.RoundTripper{
+				TLSClientConfig: tlsConfig,
+				QUICConfig:      quicConfig,
+				Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+					udpConn, ok := pktConn.(net.PacketConn)
+					if !ok {
+						return nil, errors.New("pktConn is not a net.PacketConn, cannot use for QUIC Dial")
+					}
+					ut := &quic.UTransport{
+						Transport: &quic.Transport{
+							Conn: udpConn,
+						},
+						QUICSpec: &quicSpec,
+					}
+					udpAddr, err := net.ResolveUDPAddr(udpConn.LocalAddr().Network(), c.config.ServerAddr.String())
+					if err != nil {
+						return nil, err
+					}
+					qc, err := ut.DialEarly(ctx, udpAddr, tlsCfg, cfg)
+					if err != nil {
+						return nil, err
+					}
+					conn = qc
+					return qc, nil
+				},
+			}
+		} else {
+			rt = &http3.RoundTripper{
+				TLSClientConfig: tlsConfig,
+				QUICConfig:      quicConfig,
+				Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+					qc, err := quic.DialEarly(ctx, pktConn, c.config.ServerAddr, tlsCfg, cfg)
+					if err != nil {
+						return nil, err
+					}
+					conn = qc
+					return qc, nil
+				},
+			}
 		}
 	}
 
+	// 执行混淆的网页浏览行为
 	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
 	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
 	sendAuxiliaryRequests(httpClient, resources)
 
+	// 统一的认证请求发送逻辑
 	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
 		URL: &url.URL{
-			Scheme:   "https",
-			Host:     protocol.URLHost, // 使用 protocol (internal)
-			Path:     apiPath,
+			Scheme: "https",
+			Host: protocol.URLHost,
+			Path: apiPath,
 			RawQuery: query,
 		},
 		Header: make(http.Header),
 	}
-
 	headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
 	for k, v := range headers {
 		req.Header[k] = v
@@ -192,21 +216,23 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		if conn != nil {
-			_ = conn.CloseWithError(closeErrCodeProtocolError, "") // 保持原始错误码
+			_ = conn.CloseWithError(closeErrCodeProtocolError, "")
 		}
-		_ = pktConn.Close()
+		if c.pktConn != nil {
+			_ = c.pktConn.Close()
+		}
 		return nil, coreErrs.ConnectError{Err: err}
 	}
-
-	if resp.StatusCode != protocol.StatusAuthOK { // 使用 protocol (internal)
-		_ = conn.CloseWithError(closeErrCodeProtocolError, "") // 保持原始错误码
-		_ = pktConn.Close()
+	if resp.StatusCode != protocol.StatusAuthOK {
+		_ = conn.CloseWithError(closeErrCodeProtocolError, "")
+		if c.pktConn != nil {
+			_ = c.pktConn.Close()
+		}
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
 
-	authResp := protocol.AuthResponseFromHeader(resp.Header) // 使用 protocol (internal)
+	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
-
 	if authResp.RxAuto {
 		congestion.UseBBR(conn)
 	} else {
@@ -222,23 +248,20 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	}
 	_ = resp.Body.Close()
 
-	c.pktConn = pktConn
 	c.conn = conn
 	if authResp.UDPEnabled {
-		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn, Protocol: c.protocol}) // 传递 c.protocol
+		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn, Protocol: c.protocol})
 	}
-
 	return &HandshakeInfo{
 		UDPEnabled: authResp.UDPEnabled,
 		Tx:         actualTx,
 	}, nil
 }
 
-// openStream 使用 QStream 包装流，QStream 处理 Close()
 func (c *clientImpl) openStream() (quic.Stream, error) {
 	stream, err := c.conn.OpenStream()
 	if err != nil {
-		return nil, err
+		return nil, wrapIfConnectionClosed(err)
 	}
 	return &utils.QStream{Stream: stream}, nil
 }
@@ -248,13 +271,12 @@ func (c *clientImpl) TCP(addr string) (net.Conn, error) {
 	if err != nil {
 		return nil, wrapIfConnectionClosed(err)
 	}
-	
-	// 在加密封装前最后一刻修改协议字段 (客户端)
+
 	var finalAddr string = addr
 	if c.protocol != nil {
-		ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
+		ctx := protocol_ext.ProtocolContext{
 			Type:     "tcp_request",
-			IsClient: true, // 客户端
+			IsClient: true,
 			PeerAddr: c.conn.RemoteAddr(),
 			StreamID: stream.StreamID(),
 		}
@@ -263,48 +285,40 @@ func (c *clientImpl) TCP(addr string) (net.Conn, error) {
 			_ = stream.Close()
 			return nil, fmt.Errorf("protocol obfuscation failed: %w", pErr)
 		}
-		finalAddr = modifiedAddrData.(string) // 类型断言回 string
+		finalAddr = modifiedAddrData.(string)
 	}
-	
-	// 发送请求
-	err = protocol.WriteTCPRequest(stream, finalAddr) // 使用 protocol (internal)，并使用可能修改过的 finalAddr
+
+	err = protocol.WriteTCPRequest(stream, finalAddr)
 	if err != nil {
 		_ = stream.Close()
 		return nil, wrapIfConnectionClosed(err)
 	}
 	if c.config.FastOpen {
-		// 当快速打开启用时，不等待响应。
-		// 立即返回连接，将响应处理推迟到第一次 Read() 调用。
 		return &tcpConn{
 			Orig:             stream,
 			PseudoLocalAddr:  c.conn.LocalAddr(),
 			PseudoRemoteAddr: c.conn.RemoteAddr(),
 			Established:      false,
-			protocol:         c.protocol, // 传递 protocol 给 tcpConn
+			protocol:         c.protocol,
 			isClient:         true,
 			peerAddr:         c.conn.RemoteAddr(),
 			streamID:         stream.StreamID(),
 		}, nil
 	}
-	// 读取响应
-	ok, msg, err := protocol.ReadTCPResponse(stream) // 读取原始响应，使用 protocol (internal)
+	ok, msg, err := protocol.ReadTCPResponse(stream)
 	if err != nil {
 		_ = stream.Close()
 		return nil, wrapIfConnectionClosed(err)
 	}
 
-	// 在解密后第一时间还原协议字段 (客户端，如果插件修改了响应)
-	// 目前协议插件只处理 reqAddr，但为了未来扩展性，可以保留这个逻辑
 	if c.protocol != nil {
-		ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
-			Type:     "tcp_response", // 假设协议插件可能处理响应
+		ctx := protocol_ext.ProtocolContext{
+			Type:     "tcp_response",
 			IsClient: true,
 			PeerAddr: c.conn.RemoteAddr(),
 			StreamID: stream.StreamID(),
 		}
-		// 这里需要根据协议插件如何修改响应来决定如何处理 ok 和 msg
-		// _, _ = c.protocol.Deobfuscate(msg, ctx) // 示例：如果 msg 是 ProtocolData
-		_, _ = ctx, ok // 避免 unused 警告
+		_, _ = ctx, ok
 	}
 
 	if !ok {
@@ -316,7 +330,7 @@ func (c *clientImpl) TCP(addr string) (net.Conn, error) {
 		PseudoLocalAddr:  c.conn.LocalAddr(),
 		PseudoRemoteAddr: c.conn.RemoteAddr(),
 		Established:      true,
-		protocol:         c.protocol, // 传递 protocol 给 tcpConn
+		protocol:         c.protocol,
 		isClient:         true,
 		peerAddr:         c.conn.RemoteAddr(),
 		streamID:         stream.StreamID(),
@@ -331,8 +345,10 @@ func (c *clientImpl) UDP() (HyUDPConn, error) {
 }
 
 func (c *clientImpl) Close() error {
-	_ = c.conn.CloseWithError(closeErrCodeOK, "") // 保持原始错误码
-	_ = c.pktConn.Close()
+	_ = c.conn.CloseWithError(closeErrCodeOK, "")
+	if c.pktConn != nil {
+		_ = c.pktConn.Close()
+	}
 	return nil
 }
 
@@ -340,8 +356,6 @@ var nonPermanentErrors = []error{
 	quic.StreamLimitReachedError{},
 }
 
-// wrapIfConnectionClosed 检查 quic-go 返回的错误是否可恢复 (列在 nonPermanentErrors 中) 或永久性。
-// 可恢复的错误按原样返回，永久性的错误包装为 ClosedError。
 func wrapIfConnectionClosed(err error) error {
 	for _, e := range nonPermanentErrors {
 		if errors.Is(err, e) {
@@ -356,7 +370,7 @@ type tcpConn struct {
 	PseudoLocalAddr  net.Addr
 	PseudoRemoteAddr net.Addr
 	Established      bool
-	protocol         protocol_ext.Protocol // tcpConn 也需要协议插件
+	protocol         protocol_ext.Protocol
 	isClient         bool
 	peerAddr         net.Addr
 	streamID         quic.StreamID
@@ -364,26 +378,19 @@ type tcpConn struct {
 
 func (c *tcpConn) Read(b []byte) (n int, err error) {
 	if !c.Established {
-		// 读取响应
-		ok, msg, err := protocol.ReadTCPResponse(c.Orig) // 使用 protocol (internal)
+		ok, msg, err := protocol.ReadTCPResponse(c.Orig)
 		if err != nil {
 			return 0, err
 		}
-		
-		// 在解密后第一时间还原协议字段 (客户端，如果插件修改了响应)
-		// 再次提醒：SimpleAddrOffset 示例插件不影响响应，但为通用性保留此结构
 		if c.protocol != nil {
-			ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
+			ctx := protocol_ext.ProtocolContext{
 				Type:     "tcp_response",
 				IsClient: c.isClient,
 				PeerAddr: c.peerAddr,
 				StreamID: c.streamID,
 			}
-			// 这里假设 msg 是可以被修改的，如果 ok 状态也可能被修改，则需要更复杂的逻辑
-			// _, _ = c.protocol.Deobfuscate(msg, ctx) // 示例：如果 msg 是 ProtocolData
-			_, _ = ctx, ok // 避免 unused 警告
+			_, _ = ctx, ok
 		}
-		
 		if !ok {
 			return 0, coreErrs.DialError{Message: msg}
 		}
@@ -422,63 +429,240 @@ func (c *tcpConn) SetWriteDeadline(t time.Time) error {
 
 type udpIOImpl struct {
 	Conn quic.Connection
-	Protocol protocol_ext.Protocol // udpIOImpl 也需要协议插件
+	Protocol protocol_ext.Protocol
 }
 
-func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) { // 使用 protocol (internal)
+func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
 	for {
+		// 使用类型断言来处理 FakeTCP 适配器
+		if adapter, ok := io.Conn.(*quicAdapter); ok {
+			msg, err := adapter.ReadUDPFromStream()
+			if err != nil {
+				return nil, err
+			}
+			return &protocol.UDPMessage{
+				SessionID: 0,
+				Addr:      msg.Addr.String(),
+				Data:      msg.Payload,
+			}, nil
+		}
+		
 		msgRaw, err := io.Conn.ReceiveDatagram(context.Background())
 		if err != nil {
-			// 连接错误，这将停止会话管理器
 			return nil, err
 		}
-		udpMsg, err := protocol.ParseUDPMessage(msgRaw) // 解析原始 UDP 消息，使用 protocol (internal)
+		udpMsg, err := protocol.ParseUDPMessage(msgRaw)
 		if err != nil {
-			// 无效消息，这没关系 - 只需等待下一个
 			continue
 		}
-
-		// 在解密后第一时间还原协议字段 (客户端接收 UDP)
+		
 		if io.Protocol != nil {
-			ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
+			ctx := protocol_ext.ProtocolContext{
 				Type:     "udp_message",
-				IsClient: true, // 客户端
+				IsClient: true,
 				PeerAddr: io.Conn.RemoteAddr(),
 				SessionID: udpMsg.SessionID,
 			}
 			modifiedUDPMsgData, pErr := io.Protocol.Deobfuscate(udpMsg, ctx)
 			if pErr != nil {
-				// 协议解密失败，丢弃此包
 				continue
 			}
-			udpMsg = modifiedUDPMsgData.(*protocol.UDPMessage) // 类型断言回 *protocol.UDPMessage (internal)
+			udpMsg = modifiedUDPMsgData.(*protocol.UDPMessage)
 		}
 
 		return udpMsg, nil
 	}
 }
 
-func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error { // 使用 protocol (internal)
-	// 在加密封装前最后一刻修改协议字段 (客户端发送 UDP)
-	var finalMsg *protocol.UDPMessage = msg // 使用 protocol (internal)
+func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
+	var finalMsg *protocol.UDPMessage = msg
 	if io.Protocol != nil {
-		ctx := protocol_ext.ProtocolContext{ // 使用 protocol_ext
-			Type:     "udp_message",
-			IsClient: true, // 客户端
-			PeerAddr: io.Conn.RemoteAddr(),
+		ctx := protocol_ext.ProtocolContext{
+			Type:      "udp_message",
+			IsClient:  true,
+			PeerAddr:  io.Conn.RemoteAddr(),
 			SessionID: msg.SessionID,
 		}
 		modifiedUDPMsgData, pErr := io.Protocol.Obfuscate(msg, ctx)
 		if pErr != nil {
 			return fmt.Errorf("protocol obfuscation failed: %w", pErr)
 		}
-		finalMsg = modifiedUDPMsgData.(*protocol.UDPMessage) // 类型断言回 *protocol.UDPMessage (internal)
+		finalMsg = modifiedUDPMsgData.(*protocol.UDPMessage)
 	}
+	
+	// 使用类型断言来处理 FakeTCP 适配器
+	if adapter, ok := io.Conn.(*quicAdapter); ok {
+		addr, err := net.ResolveUDPAddr("udp", finalMsg.Addr)
+		if err != nil {
+			return fmt.Errorf("failed to resolve UDP address: %w", err)
+		}
+		return adapter.SendDatagramWithAddr(finalMsg.Data, addr)
+	} else {
+		msgN := finalMsg.Serialize(buf)
+		if msgN < 0 {
+			return nil
+		}
+		return io.Conn.SendDatagram(buf[:msgN])
+	}
+}
 
-	msgN := finalMsg.Serialize(buf) // 使用可能修改过的 finalMsg
-	if msgN < 0 {
-		// 消息大于缓冲区，静默丢弃
-		return nil
+// --- 以下为适配 FakeTCP 的新类型和方法 ---
+
+// quicAdapter 包装了一个 FakeTCP 连接以实现 quic.Connection 接口。
+type quicAdapter struct {
+	conn net.Conn
+	mu   sync.Mutex
+}
+
+// newQuicAdapter 创建一个新的 quicAdapter。
+func newQuicAdapter(conn net.Conn) *quicAdapter {
+	return &quicAdapter{conn: conn}
+}
+
+// ReadUDPFromStream 从 FakeTCP 流中读取一个完整的 UDP 消息。
+func (a *quicAdapter) ReadUDPFromStream() (*faketcp.XUDPMessage, error) {
+	// 读取地址长度 (4 bytes)
+	var addrLen uint32
+	err := binary.Read(a.conn, binary.BigEndian, &addrLen)
+	if err != nil {
+		return nil, err
 	}
-	return io.Conn.SendDatagram(buf[:msgN])
+	
+	// 读取地址
+	addrBytes := make([]byte, addrLen)
+	_, err = io.ReadFull(a.conn, addrBytes)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := net.ResolveUDPAddr("udp", string(addrBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve address: %w", err)
+	}
+	
+	// 读取 payload 长度 (4 bytes)
+	var payloadLen uint32
+	err = binary.Read(a.conn, binary.BigEndian, &payloadLen)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 读取 payload
+	payload := make([]byte, payloadLen)
+	_, err = io.ReadFull(a.conn, payload)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &faketcp.XUDPMessage{Addr: addr, Payload: payload}, nil
+}
+
+// WriteUDPToStream 将 UDP 消息封装并通过 FakeTCP 连接发送。
+func (a *quicAdapter) WriteUDPToStream(msg *faketcp.XUDPMessage) error {
+	addrBytes := []byte(msg.Addr.String())
+	payloadBytes := msg.Payload
+	
+	var buffer bytes.Buffer
+	binary.Write(&buffer, binary.BigEndian, uint32(len(addrBytes)))
+	buffer.Write(addrBytes)
+	binary.Write(&buffer, binary.BigEndian, uint32(len(payloadBytes)))
+	buffer.Write(payloadBytes)
+	
+	_, err := a.conn.Write(buffer.Bytes())
+	return err
+}
+
+// SendDatagramWithAddr 是一个自定义方法，用于在知道地址的情况下发送数据报。
+func (a *quicAdapter) SendDatagramWithAddr(payload []byte, addr net.Addr) error {
+	return a.WriteUDPToStream(&faketcp.XUDPMessage{
+		Addr:    addr,
+		Payload: payload,
+	})
+}
+
+// ReceiveDatagram 负责从 FakeTCP 流中读取并还原 UDP 数据报。
+func (a *quicAdapter) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	msg, err := a.ReadUDPFromStream()
+	if err != nil {
+		return nil, err
+	}
+	return msg.Payload, nil
+}
+
+// SendDatagram 负责将 UDP 数据报封装并写入 FakeTCP 流。
+func (a *quicAdapter) SendDatagram(b []byte) error {
+	return fmt.Errorf("address required for FakeTCP datagram, use SendDatagramWithAddr")
+}
+
+// 以下是 quic.Connection 接口中其他方法的实现，为了满足接口要求。
+func (a *quicAdapter) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
+	return a.OpenStream()
+}
+
+func (a *quicAdapter) OpenStream() (quic.Stream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) AcceptStream(ctx context.Context) (quic.Stream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) OpenUniStream() (quic.SendStream, error) {
+	return nil, fmt.Errorf("stream not implemented for FakeTCP adapter")
+}
+
+func (a *quicAdapter) HandshakeComplete() context.Context {
+	return context.Background()
+}
+
+func (a *quicAdapter) ConnectionState() quic.ConnectionState {
+	return quic.ConnectionState{}
+}
+
+func (a *quicAdapter) CloseWithError(code quic.ApplicationErrorCode, desc string) error {
+	return a.conn.Close()
+}
+
+func (a *quicAdapter) Context() context.Context {
+	return context.Background()
+}
+
+func (a *quicAdapter) RemoteAddr() net.Addr {
+	return a.conn.RemoteAddr()
+}
+
+func (a *quicAdapter) LocalAddr() net.Addr {
+	return a.conn.LocalAddr()
+}
+
+func (a *quicAdapter) SetCongestionControl(cc uquic_congestion.CongestionControl) {
+	// FakeTCP has no built-in congestion control; this is a no-op.
+}
+
+func (a *quicAdapter) OpenEarlyStream() (quic.Stream, error) {
+	return nil, fmt.Errorf("OpenEarlyStream not implemented for FakeTCP adapter")
+}
+func (a *quicAdapter) OpenEarlyStreamSync(ctx context.Context) (quic.Stream, error) {
+	return nil, fmt.Errorf("OpenEarlyStreamSync not implemented for FakeTCP adapter")
+}
+func (a *quicAdapter) OpenEarlyUniStream() (quic.SendStream, error) {
+	return nil, fmt.Errorf("OpenEarlyUniStream not implemented for FakeTCP adapter")
+}
+func (a *quicAdapter) OpenEarlyUniStreamSync(ctx context.Context) (quic.SendStream, error) {
+	return nil, fmt.Errorf("OpenEarlyUniStreamSync not implemented for FakeTCP adapter")
+}
+func (a *quicAdapter) EarlyConnectionState() quic.ConnectionState {
+	return quic.ConnectionState{}
+}
+
+// CloseWithError 和 Close 是一个 FakeTCP 连接，因此我们直接使用 Close。
+func (a *quicAdapter) Close() error {
+	return a.conn.Close()
 }
