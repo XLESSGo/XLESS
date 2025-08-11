@@ -10,7 +10,7 @@ require (
 	github.com/bluele/gcache v0.0.2
 	github.com/database64128/tfo-go/v2 v2.3.0
 	github.com/m13253/dns-over-https/v2 v2.3.10
-	github.com/miekg/dns v1.1.64
+	github.com/miekg/dns v1.1.68
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/stretchr/testify v1.10.0
 	github.com/txthinking/socks5 v0.0.0-20230325130024-4230056ae301
