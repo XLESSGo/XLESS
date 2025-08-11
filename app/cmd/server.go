@@ -79,6 +79,7 @@ type serverConfig struct {
 	UQUICSpecID           quic.QUICID                 `mapstructure:"uquicSpecID"` // 从 serverConfigQUIC 移到这里
 	Protocol              string                      `mapstructure:"protocol"`
 	ProtocolParam         string                      `mapstructure:"protocolParam"`
+	XLESSUseFakeTCP       bool                        `mapstructure:"xlessUseFakeTCP"`
 }
 
 // serverConfigObfs struct now directly embeds obfs.ObfuscatorConfig
@@ -295,6 +296,12 @@ func (c *serverConfig) fillConn(hyConfig *server.Config) error {
 func (c *serverConfig) fillUQUICConfig(hyConfig *server.Config) error {
 	hyConfig.EnableUQUIC = c.EnableUQUIC   // 直接赋值给 hyConfig
 	hyConfig.UQUICSpecID = c.UQUICSpecID // 直接赋值给 hyConfig
+	return nil
+}
+
+// 2. 增加 fillXLESSUseFakeTCP 方法
+func (c *serverConfig) fillXLESSUseFakeTCP(hyConfig *server.Config) error {
+	hyConfig.XLESSUseFakeTCP = c.XLESSUseFakeTCP
 	return nil
 }
 
@@ -1058,6 +1065,7 @@ func (c *serverConfig) Config() (*server.Config, error) {
 		c.fillDecoyURL,
 		c.fillUQUICConfig, // 保持不变
 		c.fillProtocolConfig, // <<< 新增这一行
+		c.fillXLESSUseFakeTCP, // 新增
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
