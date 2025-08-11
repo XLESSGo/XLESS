@@ -43,6 +43,7 @@ type Config struct {
 
 	// Add this new field to enable FakeTCP
 	XLESSUseFakeTCP bool `json:"xless_use_faketcp,omitempty"`
+	WebsimCount int // 新增：指定 Websim 请求的资源个数
 }
 
 func (c *Config) verifyAndFill() error {
