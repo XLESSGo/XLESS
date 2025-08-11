@@ -26,7 +26,7 @@ import (
 	"github.com/XLESSGo/uquic"
 	"github.com/XLESSGo/uquic/http3"
 	uquic_congestion "github.com/XLESSGo/uquic/congestion"
-	"github.com/FakeTCP/FakeTCP"
+	faketcp "github.com/FakeTCP/FakeTCP"
 )
 
 const (
@@ -49,24 +49,6 @@ type HyUDPConn interface {
 type HandshakeInfo struct {
 	UDPEnabled bool
 	Tx         uint64
-}
-
-// Config 定义了客户端的配置。
-type Config struct {
-	ConnFactory     ConnFactory
-	ServerAddr      net.Addr
-	Auth            string
-	TLSConfig       TLSConfig
-	QUICConfig      QUICConfig
-	BandwidthConfig BandwidthConfig
-	FastOpen        bool
-	DecoyURL        string
-	Protocol        ProtocolType
-	ProtocolParam   string
-	EnableUQUIC     bool
-	UQUICSpecID     quic.QUICID
-	XLESSUseFakeTCP bool
-	filled          bool
 }
 
 // clientImpl 是 Client 接口的具体实现。
@@ -112,7 +94,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	// 如果使用 FakeTCP
 	if c.config.XLESSUseFakeTCP {
 		log.Println("Using FakeTCP for connection")
-		tcpConn, err := FakeTCP.Dial(c.config.ServerAddr.String())
+		tcpConn, err := faketcp.Dial(c.config.ServerAddr.String())
 		if err != nil {
 			return nil, coreErrs.ConnectError{Err: err}
 		}
