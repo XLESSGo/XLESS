@@ -86,12 +86,37 @@ func NewClient(config *Config) (Client, *HandshakeInfo, error) {
 	return c, info, nil
 }
 
+package client
+
+import (
+	"context"
+	utls "github.com/refraction-networking/utls"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	coreErrs "github.com/XLESSGo/XLESS/core/errors"
+	"github.com/XLESSGo/XLESS/core/internal/congestion"
+	protocol "github.com/XLESSGo/XLESS/core/internal/protocol"
+	"github.com/XLESSGo/XLESS/core/internal/utils"
+
+	"github.com/XLESSGo/XLESS/faketcp"
+	"github.com/XLESSGo/uquic"
+	"github.com/XLESSGo/uquic/http3"
+)
+
 // connect 负责建立与服务器的连接和握手。
 func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	var conn quic.Connection
 	var rt http.RoundTripper
-	
-	// 如果使用 FakeTCP
+
+	// 如果使用 FakeTCP，则使用自定义的连接和 RoundTripper
 	if c.config.XLESSUseFakeTCP {
 		log.Println("Using FakeTCP for connection")
 		tcpConn, err := faketcp.Dial(c.config.ServerAddr.String())
@@ -102,32 +127,12 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		conn = newQuicAdapter(tcpConn)
 		c.conn = conn
 		
-		// FakeTCP 握手和 HTTP/3 逻辑
-		apiPath, query := randomAPIPathAndQuery()
-		req := &http.Request{
-			Method: http.MethodPost,
-			URL: &url.URL{
-				Scheme: "https",
-				Host:   protocol.URLHost,
-				Path:   apiPath,
-				RawQuery: query,
-			},
-			Header: make(http.Header),
-		}
-
-		headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
-		for k, v := range headers {
-			req.Header[k] = v
-		}
-		req.Body = io.NopCloser(strings.NewReader(string(body)))
-		req.ContentLength = int64(len(body))
-		req.Header.Set("Content-Type", contentType)
-
-		// 使用自定义的 http3.RoundTripper 适配 FakeTCP
+		// FakeTCP 模式下，需要使用自定义的 http3.RoundTripper 适配 FakeTCP 连接
 		rt = &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				return conn.(quic.EarlyConnection), nil
 			},
+			TLSClientConfig: &utls.Config{InsecureSkipVerify: true},
 		}
 
 	} else {
@@ -163,7 +168,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 				_ = pktConn.Close()
 				return nil, coreErrs.ConnectError{Err: err}
 			}
-			uquicRT := &http3.RoundTripper{
+			rt = &http3.RoundTripper{
 				TLSClientConfig: tlsConfig,
 				QUICConfig:      quicConfig,
 				Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
@@ -189,7 +194,6 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 					return qc, nil
 				},
 			}
-			rt = uquicRT
 		} else {
 			rt = &http3.RoundTripper{
 				TLSClientConfig: tlsConfig,
@@ -206,91 +210,24 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		}
 	}
 
+	// 执行混淆的网页浏览行为
 	decoyURL := c.config.DecoyURL
 	httpClient := &http.Client{Timeout: 4 * time.Second}
 	resources, _ := SimulateWebBrowse(httpClient, decoyURL)
 	sendAuxiliaryRequests(httpClient, resources)
 
-	// 如果不是 FakeTCP，则此部分已在上面处理
-	if !c.config.XLESSUseFakeTCP {
-		apiPath, query := randomAPIPathAndQuery()
-		req := &http.Request{
-			Method: http.MethodPost,
-			URL: &url.URL{
-				Scheme:   "https",
-				Host:     protocol.URLHost,
-				Path:     apiPath,
-				RawQuery: query,
-			},
-			Header: make(http.Header),
-		}
-
-		headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
-		for k, v := range headers {
-			req.Header[k] = v
-		}
-		req.Body = io.NopCloser(strings.NewReader(string(body)))
-		req.ContentLength = int64(len(body))
-		req.Header.Set("Content-Type", contentType)
-
-		time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
-
-		resp, err := rt.RoundTrip(req)
-		if err != nil {
-			if conn != nil {
-				_ = conn.CloseWithError(closeErrCodeProtocolError, "")
-			}
-			if c.pktConn != nil {
-				_ = c.pktConn.Close()
-			}
-			return nil, coreErrs.ConnectError{Err: err}
-		}
-
-		if resp.StatusCode != protocol.StatusAuthOK {
-			_ = conn.CloseWithError(closeErrCodeProtocolError, "")
-			if c.pktConn != nil {
-				_ = c.pktConn.Close()
-			}
-			return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
-		}
-		
-		authResp := protocol.AuthResponseFromHeader(resp.Header)
-		var actualTx uint64
-		if authResp.RxAuto {
-			congestion.UseBBR(conn)
-		} else {
-			actualTx = authResp.Rx
-			if actualTx == 0 || actualTx > c.config.BandwidthConfig.MaxTx {
-				actualTx = c.config.BandwidthConfig.MaxTx
-			}
-			if actualTx > 0 {
-				congestion.UseBrutal(conn, actualTx)
-			} else {
-				congestion.UseBBR(conn)
-			}
-		}
-		_ = resp.Body.Close()
-		c.conn = conn
-		if authResp.UDPEnabled {
-			c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn, Protocol: c.protocol})
-		}
-		return &HandshakeInfo{
-			UDPEnabled: authResp.UDPEnabled,
-			Tx:         actualTx,
-		}, nil
-	}
-	
-	// 在 FakeTCP 模式下，我们必须自己进行认证
+	// 统一的认证请求发送逻辑
+	apiPath, query := randomAPIPathAndQuery()
 	req := &http.Request{
 		Method: http.MethodPost,
 		URL: &url.URL{
 			Scheme: "https",
-			Host:   protocol.URLHost,
-			Path:   apiPath,
+			Host: protocol.URLHost,
+			Path: apiPath,
+			RawQuery: query,
 		},
 		Header: make(http.Header),
 	}
-
 	headers, body, contentType := buildAuthRequestObfuscatedHeaders(c.config.Auth, c.config.BandwidthConfig.MaxRx)
 	for k, v := range headers {
 		req.Header[k] = v
@@ -299,50 +236,47 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", contentType)
 
-	// 使用 FakeTCP 连接创建 http3.RoundTripper
-	fakeroundtrip := &http3.RoundTripper{
-		// 这里我们只需要一个 Dial 函数来返回我们已经建立的连接
-		Dial: func(ctx context.Context, _ string, tlsCfg *utls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-			return c.conn.(quic.EarlyConnection), nil
-		},
-		// 额外的配置在 FakeTCP 模式下可能不需要，但为了兼容性可以保留
-		TLSClientConfig: &utls.Config{InsecureSkipVerify: true},
-	}
-	
-	time.Sleep(time.Duration(500+rand.Intn(1200)) * time.Millisecond)
+	time.Sleep(time.Duration(500+utils.RandIntn(1200)) * time.Millisecond)
 
-	resp, err := fakeroundtrip.RoundTrip(req)
+	resp, err := rt.RoundTrip(req)
 	if err != nil {
-		_ = c.conn.CloseWithError(closeErrCodeProtocolError, "")
+		if conn != nil {
+			_ = conn.CloseWithError(closeErrCodeProtocolError, "")
+		}
+		if c.pktConn != nil {
+			_ = c.pktConn.Close()
+		}
 		return nil, coreErrs.ConnectError{Err: err}
 	}
 	if resp.StatusCode != protocol.StatusAuthOK {
-		_ = c.conn.CloseWithError(closeErrCodeProtocolError, "")
+		_ = conn.CloseWithError(closeErrCodeProtocolError, "")
+		if c.pktConn != nil {
+			_ = c.pktConn.Close()
+		}
 		return nil, coreErrs.AuthError{StatusCode: resp.StatusCode}
 	}
 
 	authResp := protocol.AuthResponseFromHeader(resp.Header)
 	var actualTx uint64
-
 	if authResp.RxAuto {
-		congestion.UseBBR(c.conn)
+		congestion.UseBBR(conn)
 	} else {
 		actualTx = authResp.Rx
 		if actualTx == 0 || actualTx > c.config.BandwidthConfig.MaxTx {
 			actualTx = c.config.BandwidthConfig.MaxTx
 		}
 		if actualTx > 0 {
-			congestion.UseBrutal(c.conn, actualTx)
+			congestion.UseBrutal(conn, actualTx)
 		} else {
-			congestion.UseBBR(c.conn)
+			congestion.UseBBR(conn)
 		}
 	}
 	_ = resp.Body.Close()
-	
+
+	c.conn = conn
 	if authResp.UDPEnabled {
-		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: c.conn, Protocol: c.protocol})
+		c.udpSM = newUDPSessionManager(&udpIOImpl{Conn: conn, Protocol: c.protocol})
 	}
-	
 	return &HandshakeInfo{
 		UDPEnabled: authResp.UDPEnabled,
 		Tx:         actualTx,
