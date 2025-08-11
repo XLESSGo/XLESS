@@ -18,7 +18,7 @@ require (
 	github.com/libdns/godaddy v1.0.3
 	github.com/libdns/namedotcom v0.3.3
 	github.com/libdns/vultr v1.0.0
-	github.com/mdp/qrterminal/v3 v3.1.1
+	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/mholt/acmez/v3 v3.1.2
 	github.com/refraction-networking/utls v1.7.4-0.20250521174854-63aeec73c564
 	github.com/spf13/cobra v1.9.1
@@ -54,7 +54,7 @@ require (
 	github.com/libdns/libdns v0.2.3 // indirect
 	github.com/m13253/dns-over-https/v2 v2.3.10 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/miekg/dns v1.1.64 // indirect
+	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/onsi/ginkgo/v2 v2.23.4 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
@@ -78,9 +78,10 @@ require (
 	go.uber.org/zap/exp v0.3.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/mod v0.26.0 // indirect
-	golang.org/x/net v0.42.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.20.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/tools v0.35.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
