@@ -286,7 +286,7 @@ func (c *clientImpl) connect() (*HandshakeInfo, error) {
 		URL: &url.URL{
 			Scheme: "https",
 			Host:   protocol.URLHost,
-			Path:   randomAPIPath(),
+			Path:   apiPath,
 		},
 		Header: make(http.Header),
 	}
