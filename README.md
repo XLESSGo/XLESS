@@ -1,3 +1,13 @@
+**Project Status: Archived**
+
+This project is no longer actively maintained due to the maintainer's diminished passion for development.
+
+The code is provided "as is" under the MIT license. You are free to modify, package, and redistribute it in any form, as long as you adhere to the terms of the license. All dependencies are non-infectious, meaning they do not impose additional restrictions on your code.
+
+Thank you for your interest and support. We may meet again sometime.
+
+---
+
 # XLESS
 
 XLESS is a modern, highly obfuscated, and extremely secure proxy forwarding tool that supports HTTP/3 & UDP. It is designed for anti-detection and anti-interference scenarios, featuring real website traffic obfuscation, deep disguise of authentication requests, and transparent decoy reverse proxy capabilities. XLESS is ideal for high-threat environments where active probing and passive traffic analysis are concerns.
