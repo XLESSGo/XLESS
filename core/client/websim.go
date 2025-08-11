@@ -36,18 +36,30 @@ func SimulateWebBrowse(client *http.Client, decoyBaseURL string) ([]string, erro
 	return resources, nil
 }
 
-// sendAuxiliaryRequests picks 2-4 resources (or all if not enough links), in order,
-// and makes GET requests to each with a random delay between 300ms and 1200ms.
-// If there are no resources, this function returns immediately.
-func sendAuxiliaryRequests(client *http.Client, resources []string) {
+// sendAuxiliaryRequests picks resources to request with a random delay.
+// It will request `count` resources if configured and there are at least 4 available.
+// Otherwise, it falls back to the default behavior of requesting 2-4 resources.
+func sendAuxiliaryRequests(client *http.Client, resources []string, count int) {
 	if len(resources) == 0 {
 		return
 	}
-	// Pick 2-4 resources in order (not shuffled). If not enough, use all.
-	num := rand.Intn(3) + 2 // 2~4
-	if len(resources) < num {
-		num = len(resources)
+
+	var num int
+	if count > 0 && len(resources) >= 4 {
+		// 使用配置的个数，但不超过可用资源总数
+		if count < len(resources) {
+			num = count
+		} else {
+			num = len(resources)
+		}
+	} else {
+		// 使用默认机制：随机 2-4 个
+		num = rand.Intn(3) + 2
+		if len(resources) < num {
+			num = len(resources)
+		}
 	}
+	
 	for i := 0; i < num; i++ {
 		_, _ = client.Get(resources[i])
 		time.Sleep(time.Duration(300+rand.Intn(900)) * time.Millisecond)
