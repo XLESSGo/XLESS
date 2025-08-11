@@ -16,6 +16,7 @@ import (
 
 	"github.com/XLESSGo/uquic"
 	"github.com/XLESSGo/uquic/http3"
+	uquic_congestion "github.com/XLESSGo/uquic/congestion" 
 	"github.com/FakeTCP/FakeTCP"
 
 	"github.com/XLESSGo/XLESS/core/internal/congestion"
@@ -312,7 +313,7 @@ func (a *quicAdapter) LocalAddr() net.Addr {
 }
 
 // SetCongestionControl is a required method for the quic.Connection interface.
-func (a *quicAdapter) SetCongestionControl(cc func() quic.CongestionControl) error {
+func (a *quicAdapter) SetCongestionControl(cc uquic_congestion.CongestionControl) error {
 	// FakeTCP has no built-in congestion control; this is a no-op.
 	return nil
 }
