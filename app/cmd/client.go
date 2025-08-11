@@ -81,6 +81,7 @@ type clientConfig struct {
 	UQUICSpecID   quic.QUICID           `mapstructure:"uquicSpecID"` // 从 clientConfigQUIC 移到这里
 	Protocol      string                `mapstructure:"protocol"`
 	ProtocolParam string                `mapstructure:"protocolParam"`
+	XLESSUseFakeTCP bool                `mapstructure:"xlessUseFakeTCP"`
 }
 
 type clientConfigTransportUDP struct {
@@ -462,6 +463,7 @@ func (c *clientConfig) Config() (*client.Config, error) {
 		c.fillDecoyURL, 
 		c.fillUQUICConfig, // 新增
 		c.fillProtocolConfig, // <<< 新增这一行
+		c.fillXLESSUseFakeTCP, // 新增
 	}
 	for _, f := range fillers {
 		if err := f(hyConfig); err != nil {
@@ -883,6 +885,12 @@ func (c *clientConfig) fillDecoyURL(hyConfig *client.Config) error {
     }
     hyConfig.DecoyURL = c.DecoyURL
     return nil
+}
+
+// 2. 增加 fillXLESSUseFakeTCP 方法
+func (c *clientConfig) fillXLESSUseFakeTCP(hyConfig *client.Config) error {
+	hyConfig.XLESSUseFakeTCP = c.XLESSUseFakeTCP
+	return nil
 }
 
 // isPortHoppingPort returns whether the port string is a port hopping port.
